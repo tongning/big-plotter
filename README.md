@@ -21,6 +21,8 @@ web/       the web app (vanilla HTML/CSS/JS, no build step) — this exact
            folder is what gets flashed to the ESP32's LittleFS
 server/    desktop mock of the ESP32 for development, plus dev tools
 esp32/     PlatformIO firmware for the ESP32-S2 Mini
+marlin/    Marlin config + build script for the SKR 1.4, and the built
+           firmware.bin (the Marlin source tree itself is not committed)
 tasks/     working notes (todo, lessons)
 ```
 
@@ -116,6 +118,52 @@ First hardware test: open the web app → ⚙️ admin panel → **Pen up**. The
 serial monitor should show `[printer] ok`. Then jog with the arrows, set the
 origin with 📍 (`G92 X0 Y0` — the machine has no endstops), and plot the
 star demo.
+
+## Marlin firmware for the SKR 1.4
+
+The plotter's controller runs a custom Marlin **2.1.2.5** build. Our changes
+live in `marlin/config/` (Configuration.h, Configuration_adv.h, and the SKR
+pins file); `marlin/build.sh` clones Marlin at the pinned tag, applies them,
+and builds:
+
+```sh
+./marlin/build.sh       # requires PlatformIO; output: marlin/firmware.bin
+```
+
+**Flashing** (LPC1768 boards are SD-card only): copy `marlin/firmware.bin`
+to a FAT32 SD card, insert into the SKR, power-cycle. The bootloader
+installs it and renames the file to `FIRMWARE.CUR` — that rename is the
+sign it worked.
+
+What the build configures:
+
+- True 2-axis Cartesian machine ("Big Plotter"): X + Y only, no Z, no
+  extruder, no heaters/thermistors.
+- TMC2208/2209 drivers in standalone (STEP/DIR) mode; **100 steps/mm**
+  (GT2 belt, 16T pulleys, assumes 1/16 microstep jumpers under the
+  drivers).
+- Motion limits: 300mm/s max, 1000mm/s² acceleration; bed 762×508mm.
+- **Both serial ports live**: USB and the TFT header (ESP32) at 115200.
+- **Servos on the endstop ports** (their 3-pin plugs fit directly):
+  | Function | gcode | port | signal pin |
+  |---|---|---|---|
+  | Pen lift | `M280 P0 S<angle>` | X-endstop | P1.29 |
+  | Color select | `M280 P1 S<angle>` | Y-endstop | P1.28 |
+
+  Endstop functions are remapped to unused pins — fine, since the machine
+  has no switches and homes via `G92`.
+- No endstops: never send `G28`. Software min/max endstops are enabled, so
+  after `G92 X0 Y0` at the physical origin the firmware rejects moves
+  outside the board.
+- EEPROM on: tune steps/mm with `M92 X… Y…` + `M500` (e.g. after the
+  100mm-line calibration test) without reflashing.
+
+Hardware cautions for the servo-on-endstop-port wiring: verify the port's
+power pin is actually 5V before plugging a servo in (if it's 3.3V, power
+the servo from the SERVOS header and use only the endstop signal pin), and
+the endstop inputs have RC filter parts that round the PWM edges — if a
+servo jitters, move its signal to P2.0 (SERVOS) / P0.10 (PROBE), a one-line
+change in `marlin/config/pins_BTT_SKR_V1_4.h`.
 
 ## API (implemented by both `server/server.py` and the firmware)
 

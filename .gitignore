@@ -7,6 +7,9 @@ esp32/.pio/
 # generated: mirrored from web/ by esp32/scripts/sync_web.py at build time
 esp32/data/
 
+# Marlin source tree (cloned by marlin/build.sh; our changes live in marlin/config/)
+marlin/Marlin/
+
 # mock server runtime state
 server/board.json
 server/commands.log

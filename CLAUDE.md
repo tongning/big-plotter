@@ -23,6 +23,11 @@ esp32/
   src/main.cpp        entire firmware; config constants at the top
   scripts/sync_web.py PIO pre-script: mirrors ../web → data/ for uploadfs
   data/               GENERATED — never edit, gitignored
+marlin/
+  config/             our Marlin 2.1.2.5 changes (Configuration*.h + SKR
+                      pins file with servos on the endstop ports)
+  build.sh            clones Marlin (gitignored), applies config, builds
+  firmware.bin        built output; flash via SD card (LPC = no USB flash)
 tasks/                todo.md (plan/progress), lessons.md (corrections)
 ```
 
