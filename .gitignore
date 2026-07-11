@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# PlatformIO build output
+esp32/.pio/
+
+# generated: mirrored from web/ by esp32/scripts/sync_web.py at build time
+esp32/data/
+
+# mock server runtime state
+server/board.json
+server/commands.log
+server/prints/

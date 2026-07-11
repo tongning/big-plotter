@@ -1,0 +1,5 @@
+[
+  { "id": "star", "name": "Star", "file": "star.gcode" },
+  { "id": "smiley", "name": "Smiley", "file": "smiley.gcode" },
+  { "id": "opensauce", "name": "Open Sauce", "file": "opensauce.gcode" }
+]

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Sauce Plotter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>🖊️ Open Sauce Plotter</h1>
+  <p>Make a drawing and watch the robot plot it!</p>
+  <button id="btn-admin" class="ghost" title="Machine control">⚙️</button>
+</header>
+
+<div id="admin-panel" class="hidden">
+  <h3>Machine control</h3>
+  <div class="admin-grid">
+    <span></span>
+    <button data-jog="y+" title="Move head +Y">▲</button>
+    <span></span>
+    <button data-jog="x-" title="Move head −X">◀</button>
+    <button id="btn-home" title="Set current position as home (G92 X0 Y0)">📍</button>
+    <button data-jog="x+" title="Move head +X">▶</button>
+    <span></span>
+    <button data-jog="y-" title="Move head −Y">▼</button>
+    <span></span>
+  </div>
+  <div class="admin-row">
+    <span>step</span>
+    <button data-step="1">1</button>
+    <button data-step="10" class="active">10</button>
+    <button data-step="50">50</button>
+    <span>mm</span>
+  </div>
+  <div class="admin-row">
+    <button id="btn-pen-up">Pen up</button>
+    <button id="btn-pen-down">Pen down</button>
+  </div>
+  <div id="admin-status"></div>
+</div>
+
+<section id="view-board">
+  <p class="hint">Drag the blue square to pick where your drawing goes on the board.</p>
+  <div class="board-wrap">
+    <canvas id="board-canvas"></canvas>
+  </div>
+  <div class="board-actions">
+    <button id="btn-start" class="primary big">✏️ Draw in this spot</button>
+    <div class="demo-strip">
+      <span class="demo-strip-label">…or plot a ready-made drawing here:</span>
+      <div id="demo-cards"></div>
+    </div>
+    <button id="btn-clear-board" class="ghost danger">🧹 New paper (clear board)</button>
+  </div>
+</section>
+
+<section id="view-draw" class="hidden">
+  <div class="draw-top">
+    <button id="btn-back" class="ghost">← Back</button>
+    <span id="region-label"></span>
+    <input id="drawing-name" placeholder="Name your drawing (optional)" maxlength="30">
+  </div>
+  <div id="demo-banner" class="hidden">
+    <span id="demo-banner-text"></span>
+    <button id="btn-demo-blank" class="ghost">start blank instead</button>
+  </div>
+  <div class="toolbar" id="toolbar">
+    <button data-tool="pen" class="active" title="Pen">✏️ Pen</button>
+    <button data-tool="eraser" title="Eraser">🧽 Eraser</button>
+    <button data-tool="line" title="Line">╱ Line</button>
+    <button data-tool="rect" title="Rectangle">▭ Rect</button>
+    <button data-tool="ellipse" title="Ellipse">◯ Ellipse</button>
+    <span id="eraser-size-wrap" class="hidden">
+      <label for="eraser-size">size</label>
+      <input type="range" id="eraser-size" min="2" max="15" step="1" value="6">
+    </span>
+    <span class="spacer"></span>
+    <button id="btn-undo" title="Undo">↩︎ Undo</button>
+    <button id="btn-clear-drawing" title="Clear">🗑 Clear</button>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="draw-canvas" width="900" height="900"></canvas>
+  </div>
+  <button id="btn-submit" class="primary big">🖨️ Draw it!</button>
+</section>
+
+<div id="toast" class="hidden"></div>
+
+<script src="js/config.js"></script>
+<script src="js/gcode.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
