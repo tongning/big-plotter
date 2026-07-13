@@ -3705,8 +3705,14 @@
  *
  *  - M206 and M428 are disabled.
  *  - G92 will revert to its behavior from Marlin 1.0.
+ *
+ * Big Plotter: enabled so G92 sets the NATIVE position directly. Software
+ * endstop bounds live in native space (X/Y_MIN/MAX_POS) and do not track
+ * workspace shifts, so this anchors the enforced 0-762 x 0-508 window at
+ * the physical origin set by the admin "set home" button (G92 X0 Y0).
+ * Pairs with our patched G92.cpp, which marks G92'd axes homed/trusted.
  */
-//#define NO_WORKSPACE_OFFSETS
+#define NO_WORKSPACE_OFFSETS
 
 /**
  * CNC G-code options

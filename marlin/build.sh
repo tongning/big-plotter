@@ -11,6 +11,9 @@ fi
 
 cp config/Configuration.h config/Configuration_adv.h Marlin/Marlin/
 cp config/pins_BTT_SKR_V1_4.h Marlin/Marlin/src/pins/lpc1768/
+# Patched G92: marks G92'd axes homed/trusted so software endstops engage
+# after the admin "set home" (this machine has no endstop switches / G28).
+cp config/G92.cpp Marlin/Marlin/src/gcode/geometry/
 
 (cd Marlin && pio run -e LPC1768)
 

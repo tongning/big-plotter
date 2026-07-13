@@ -116,8 +116,11 @@ is labeled `+5V GND 0.2 0.3 RESET` (square pad = `+5V`).
 
 First hardware test: open the web app → ⚙️ admin panel → **Pen up**. The
 serial monitor should show `[printer] ok`. Then jog with the arrows, set the
-origin with 📍 (`G92 X0 Y0` — the machine has no endstops), and plot the
-star demo.
+origin with 📍 (`G92 X0 Y0` + `M211 S1` — the machine has no endstops; this
+also arms the firmware's software endstops, see the Marlin section), and
+plot the star demo. The panel also has **Motors off** (`M84`, so the head
+can be positioned by hand) and a custom-gcode box for one-off commands
+(`M92` calibration, `M211 S0`, servo angle tests, …).
 
 ## Marlin firmware for the SKR 1.4
 
@@ -142,7 +145,7 @@ What the build configures:
 - TMC2208/2209 drivers in standalone (STEP/DIR) mode; **100 steps/mm**
   (GT2 belt, 16T pulleys, assumes 1/16 microstep jumpers under the
   drivers).
-- Motion limits: 300mm/s max, 1000mm/s² acceleration; bed 762×508mm.
+- Motion limits: 200mm/s max, 1500mm/s² acceleration; bed 762×508mm.
 - **Both serial ports live**: USB and the TFT header (ESP32) at 115200.
 - **Servos on the endstop ports** (their 3-pin plugs fit directly):
   | Function | gcode | port | signal pin |
@@ -152,9 +155,16 @@ What the build configures:
 
   Endstop functions are remapped to unused pins — fine, since the machine
   has no switches and homes via `G92`.
-- No endstops: never send `G28`. Software min/max endstops are enabled, so
-  after `G92 X0 Y0` at the physical origin the firmware rejects moves
-  outside the board.
+- No endstops: never send `G28`. Software min/max endstops are enabled and
+  actually enforced via two of our changes: stock Marlin only clamps *homed*
+  axes (and only `G28` sets that flag), so our patched `G92.cpp` marks
+  `G92`'d axes homed/trusted, and `NO_WORKSPACE_OFFSETS` makes `G92` set the
+  native position directly (soft-endstop bounds live in native space). Net
+  effect: after the admin **set home** (`G92 X0 Y0` at the physical origin)
+  the firmware clamps all moves to 0–762 × 0–508mm. Before set-home, jogging
+  is unrestricted. To deliberately jog past a stale zero when re-homing,
+  send `M211 S0` from the admin gcode box (set home re-arms with `M211 S1`),
+  or use **Motors off** (`M84`) and move the head by hand.
 - EEPROM on: tune steps/mm with `M92 X… Y…` + `M500` (e.g. after the
   100mm-line calibration test) without reflashing.
 

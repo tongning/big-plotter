@@ -24,8 +24,9 @@ esp32/
   scripts/sync_web.py PIO pre-script: mirrors ../web → data/ for uploadfs
   data/               GENERATED — never edit, gitignored
 marlin/
-  config/             our Marlin 2.1.2.5 changes (Configuration*.h + SKR
-                      pins file with servos on the endstop ports)
+  config/             our Marlin 2.1.2.5 changes (Configuration*.h, SKR pins
+                      file with servos on the endstop ports, patched G92.cpp
+                      that marks G92'd axes homed so soft endstops engage)
   build.sh            clones Marlin (gitignored), applies config, builds
   firmware.bin        built output; flash via SD card (LPC = no USB flash)
 tasks/                todo.md (plan/progress), lessons.md (corrections)
@@ -46,8 +47,11 @@ tasks/                todo.md (plan/progress), lessons.md (corrections)
 - **Drawings are vectors end-to-end.** Strokes are polylines; the eraser
   splits geometry rather than painting pixels. Never rasterize.
 - **The machine has no endstops.** "Home" = jog to origin + `G92 X0 Y0`,
-  never `G28`. Soft endstops can't be trusted, so the coordinate clamping in
-  `gcode.js` (margin 25.4mm) is the real crash protection — keep it strict.
+  never `G28`. Marlin's soft endstops only engage after set-home (our
+  patched `marlin/config/G92.cpp` marks G92'd axes homed; stock Marlin never
+  clamps unhomed axes) and only on freshly-flashed firmware, so the
+  coordinate clamping in `gcode.js` (margin 25.4mm) remains the primary
+  crash protection — keep it strict.
 - **Only the latest drawing is sent to the printer.** Board records
   (`POST /api/board`) are display-only state for the region picker.
 - Firmware stores board records as **comma-separated JSON objects** in

@@ -275,6 +275,15 @@ $('#btn-submit').addEventListener('click', async () => {
 $('#btn-admin').addEventListener('click', () =>
   $('#admin-panel').classList.toggle('hidden'));
 
+// Clicking/tapping anywhere outside the open panel dismisses it. The ⚙️
+// button is excluded so its own click still toggles rather than reopening.
+document.addEventListener('pointerdown', e => {
+  const panel = $('#admin-panel');
+  if (panel.classList.contains('hidden')) return;
+  if (e.target.closest('#admin-panel, #btn-admin')) return;
+  panel.classList.add('hidden');
+});
+
 let jogStep = 10; // mm
 
 for (const btn of document.querySelectorAll('[data-step]')) {
@@ -308,12 +317,29 @@ for (const btn of document.querySelectorAll('[data-jog]')) {
   });
 }
 
+// Set home = zero here (G92) + turn software endstops on (M211). The
+// patched Marlin marks G92'd axes as homed, so from this point the firmware
+// clamps moves to the board; M211 S1 re-arms them in case an operator sent
+// M211 S0 (the escape hatch for jogging past a stale zero when re-homing).
 $('#btn-home').addEventListener('click', () =>
-  sendCommand('G92 X0 Y0\n', 'set home (0,0)'));
+  sendCommand('G92 X0 Y0\nM211 S1\n', 'set home (0,0) + endstops on'));
 $('#btn-pen-up').addEventListener('click', () =>
   sendCommand(CONFIG.penUpCmd + '\n', 'pen up'));
 $('#btn-pen-down').addEventListener('click', () =>
   sendCommand(CONFIG.penDownCmd + '\n', 'pen down'));
+$('#btn-motors-off').addEventListener('click', () =>
+  sendCommand('M84\n', 'motors off'));
+
+const gcodeInput = $('#gcode-input');
+function sendCustomGcode() {
+  const text = gcodeInput.value.trim();
+  if (!text) return;
+  sendCommand(text + '\n', text);
+}
+$('#btn-gcode-send').addEventListener('click', sendCustomGcode);
+gcodeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendCustomGcode();
+});
 
 // ---------- demos ----------
 

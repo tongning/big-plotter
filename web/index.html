@@ -37,6 +37,12 @@
   <div class="admin-row">
     <button id="btn-pen-up">Pen up</button>
     <button id="btn-pen-down">Pen down</button>
+    <button id="btn-motors-off" title="Disable steppers (M84) — head can be moved by hand">Motors off</button>
+  </div>
+  <div class="admin-row gcode-row">
+    <input id="gcode-input" placeholder="Custom gcode (e.g. M211 S0)"
+           spellcheck="false" autocomplete="off">
+    <button id="btn-gcode-send">Send</button>
   </div>
   <div id="admin-status"></div>
 </div>

@@ -60,6 +60,16 @@ header p { margin: 4px 0 0; color: #667; }
   font-size: 13px;
   color: #556;
 }
+.admin-row.gcode-row { align-self: stretch; }
+#gcode-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #ccd2e0;
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
 #admin-status {
   min-height: 18px;
   font-size: 13px;
