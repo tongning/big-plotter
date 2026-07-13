@@ -179,7 +179,6 @@ function enterDraw(demo) {
   $('#region-label').textContent =
     'Spot: X ' + Math.round(r.x) + '–' + Math.round(r.x + CONFIG.tile) +
     'mm, Y ' + Math.round(r.y) + '–' + Math.round(r.y + CONFIG.tile) + 'mm';
-  $('#drawing-name').value = '';
   const banner = $('#demo-banner');
   if (demo) {
     surface.readonly = true;
@@ -252,8 +251,7 @@ function watchJob() {
 
 $('#btn-submit').addEventListener('click', async () => {
   const btn = $('#btn-submit');
-  const name = $('#drawing-name').value.trim() ||
-    (state.demo ? state.demo.name : 'visitor drawing');
+  const name = state.demo ? state.demo.name : 'visitor drawing';
   let gcode, polylines;
   if (state.demo) {
     gcode = demoToGcode(state.demo.text, state.region, state.demo.name);

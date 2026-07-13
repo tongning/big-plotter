@@ -147,15 +147,6 @@ section {
   max-width: 640px;
 }
 #region-label { font-size: 13px; color: #556; white-space: nowrap; }
-#drawing-name {
-  flex: 1;
-  min-width: 120px;
-  padding: 8px 10px;
-  border: 1px solid #ccd2e0;
-  border-radius: 8px;
-  font: inherit;
-}
-
 #demo-banner {
   display: flex;
   align-items: center;
