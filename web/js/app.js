@@ -218,6 +218,38 @@ $('#eraser-size').addEventListener('input', e => {
   surface.eraserRadius = Number(e.target.value);
 });
 
+// A queued job can still die on the machine (e.g. "printer not
+// responding") — the POST succeeding only means the upload worked. Watch
+// /api/status after each submit and surface the outcome as a toast.
+let watchTimer = null;
+function watchJob() {
+  clearInterval(watchTimer);
+  let idlePolls = 0, polls = 0;
+  watchTimer = setInterval(async () => {
+    let st;
+    try {
+      st = await api('GET', '/api/status');
+    } catch (err) {
+      clearInterval(watchTimer); // status unavailable — nothing to report
+      return;
+    }
+    if (st.error) {
+      clearInterval(watchTimer);
+      toast('⚠️ Plot failed: ' + st.error);
+    } else if (st.state === 'idle') {
+      // Two consecutive idle polls = job finished (one could be a race
+      // with the job not having started yet).
+      if (++idlePolls >= 2) {
+        clearInterval(watchTimer);
+        toast('Plot finished 🖊️');
+      }
+    } else {
+      idlePolls = 0;
+    }
+    if (++polls > 450) clearInterval(watchTimer); // give up after ~15 min
+  }, 2000);
+}
+
 $('#btn-submit').addEventListener('click', async () => {
   const btn = $('#btn-submit');
   const name = $('#drawing-name').value.trim() ||
@@ -248,7 +280,9 @@ $('#btn-submit').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'Sending…';
   try {
-    await api('POST', '/api/print', gcode, 'text/plain');
+    // ESPAsyncWebServer mistakes text/plain that contains `=` for form data.
+    // Generated gcode includes `; region x=…`, so send it as an opaque body.
+    await api('POST', '/api/print', gcode, 'application/octet-stream');
     await api('POST', '/api/board', JSON.stringify({
       id: String(Date.now()),
       name,
@@ -260,6 +294,7 @@ $('#btn-submit').addEventListener('click', async () => {
     }), 'application/json');
     toast(copied ? 'Sent to the plotter! 🖊️ (gcode copied to clipboard)'
                  : 'Sent to the plotter! 🖊️');
+    watchJob();
     await loadBoard();
     showBoard();
   } catch (err) {
@@ -300,7 +335,7 @@ async function sendCommand(gcode, label) {
   const status = $('#admin-status');
   status.textContent = '→ ' + label;
   try {
-    await api('POST', '/api/command', gcode, 'text/plain');
+    await api('POST', '/api/command', gcode, 'application/octet-stream');
     status.textContent = '✓ ' + label;
   } catch (err) {
     status.textContent = '✗ ' + label + ' — ' + err.message;

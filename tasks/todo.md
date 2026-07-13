@@ -1,3 +1,32 @@
+# Bug hunt: drawings don't plot, jogs do (2026-07-13)
+
+Two real bugs found (both drawing-specific, jogs unaffected):
+
+1. **Zero motion (Anthony's find): ESPAsyncWebServer eats `text/plain`
+   bodies containing `=` as form params** — drawing gcode always has
+   `; region x=…` in its header, so the body never reached the gcode
+   callback; jog commands contain no `=`. Fix: client sends
+   `application/octet-stream` for /api/print and /api/command.
+2. **Mid-plot silent abort: drawings contain G4 dwells between strokes; G4
+   only acks after ALL buffered motion finishes (planner holds ~16 moves,
+   easily >10s at draw feed). Marlin sends "echo:busy" heartbeats meanwhile
+   but pumpPrinterRx ignored them → ok-timeout killed the job.** Fix: any
+   complete printer line refreshes the deadline.
+
+Also made failures visible:
+
+- [x] main.cpp: any complete printer line refreshes okDeadline (timeout now
+      means "printer went silent", not "printer is busy")
+- [x] main.cpp: spool errors → 500 (was: silent success + no motion);
+      startJob fails on missing/empty job file; [job] log lines
+- [x] app.js: watchJob() polls /api/status after submit; toasts
+      "Plot failed: <error>" / "Plot finished"
+- [x] server.py: /api/status implemented (API invariant: both impls)
+- [x] verify: esp32 pio compile OK; tests pass; /api/status + E2E curl OK
+- [ ] hardware session: reflash BOTH esp32 firmware (`pio run -t upload`)
+      + web (`uploadfs`), then serial log `[job]`/`[printer]` lines tell
+      the full story if anything still fails
+
 # Admin panel additions + real soft endstops (2026-07-13)
 
 Plan: admin "Motors off" button (M84), custom gcode box, and make Marlin's

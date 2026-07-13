@@ -181,10 +181,10 @@ change in `marlin/config/pins_BTT_SKR_V1_4.h`.
 |----------|----------------|----------------|----------|
 | `GET`    | `/api/board`   | —              | `{"drawings":[{id,name,x,y,size,polylines,ts}]}` — everything plotted so far. `x`/`y` = board mm of the region's bottom-left corner; `polylines` = compact `[x,y]` mm pairs relative to the tile (y-down), used for thumbnails. |
 | `POST`   | `/api/board`   | JSON record    | Append one drawing record. |
-| `POST`   | `/api/print`   | raw gcode text | Queue the (single, latest) drawing for the plotter. 409 if a job is active. |
-| `POST`   | `/api/command` | raw gcode text | Immediate machine command from the admin panel (jog, set-home, pen). 409 if busy. |
+| `POST`   | `/api/print`   | raw gcode (`application/octet-stream`) | Queue the (single, latest) drawing for the plotter. 409 if a job is active. |
+| `POST`   | `/api/command` | raw gcode (`application/octet-stream`) | Immediate machine command from the admin panel (jog, set-home, pen). 409 if busy. |
 | `DELETE` | `/api/board`   | —              | Clear board state (staff "new paper" button). |
-| `GET`    | `/api/status`  | —              | Firmware only: `{state, line, error, ip, rssi}` — job progress and WiFi info. |
+| `GET`    | `/api/status`  | —              | `{state, line, error, ip, rssi}` — job progress and WiFi info. The app polls this after each submit to surface job failures (a queued job can still die on the machine). Mock always reports idle/no error. |
 
 Only the current drawing's gcode is ever sent to the printer; board records
 exist purely so the region picker shows what's already on the paper.

@@ -79,6 +79,9 @@ tasks/                todo.md (plan/progress), lessons.md (corrections)
 - Avoid blocking in ESPAsyncWebServer callbacks — gcode is spooled to
   LittleFS and fed to the printer by the `pumpJob()` state machine in
   `loop()` with Marlin `ok` flow control (10s timeout per line).
+- Send raw gcode as `application/octet-stream`, not `text/plain`.
+  ESPAsyncWebServer interprets a text body containing `=` as form data; the
+  generated `region x=…` header would otherwise bypass the gcode callback.
 - Kiosk UX rule: no browser-blocking dialogs (`alert`/`confirm`/`prompt`).
   Use the toast + inline two-step confirm patterns already in `app.js`.
 

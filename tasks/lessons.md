@@ -1,5 +1,15 @@
 # Lessons
 
+- **The desktop mock can't reproduce ESPAsyncWebServer's request parsing.**
+  The zero-motion "drawings don't plot but jogs do" bug was ESPAsyncWebServer
+  consuming `text/plain` POST bodies containing `=` as form params (drawing
+  gcode always has `; region x=…`; jog commands never have `=`), so the body
+  callback never ran — while the Python mock accepted the same request fine.
+  Client now sends `application/octet-stream` for gcode. When an ESP32
+  endpoint misbehaves, suspect the framework's content-type/body handling
+  first, and verify with the device serial log (`[job] started, N bytes
+  spooled`), not just against the mock.
+
 - **Plotter has no homing switches — "home" means G92, not G28.** The machine
   is zeroed by jogging the head to the origin and running `G92 X0 Y0` (set
   current position as 0,0). Never emit `G28` for this machine; there are no

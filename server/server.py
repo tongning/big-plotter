@@ -10,6 +10,8 @@ ESP32 firmware will expose later:
                         mock: saved to server/prints/<timestamp>.gcode
                         ESP32: streamed to the SKR 1.4 over UART
   DELETE /api/board  -> clear board state (new sheet of paper)
+  GET    /api/status -> {"state","line","error","ip","rssi"} job status
+                        (mock plots instantly: always idle, never an error)
 
 Run:  python3 server/server.py [port]
 """
@@ -26,6 +28,7 @@ BOARD_FILE = ROOT / "board.json"
 PRINTS_DIR = ROOT / "prints"
 
 _lock = threading.Lock()
+_status = {"line": 0}  # lines of the last received print job
 
 
 def load_board():
@@ -58,6 +61,12 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/board":
             with _lock:
                 self._json(load_board())
+        elif self.path == "/api/status":
+            # Same shape as the firmware's /api/status. The mock "plots"
+            # instantly, so state is always idle and error always empty.
+            with _lock:
+                self._json({"state": "idle", "line": _status["line"],
+                            "error": "", "ip": "127.0.0.1", "rssi": 0})
         else:
             super().do_GET()
 
@@ -87,7 +96,9 @@ class Handler(SimpleHTTPRequestHandler):
             PRINTS_DIR.mkdir(exist_ok=True)
             name = f"{time.strftime('%Y%m%d-%H%M%S')}-{int(time.time() * 1000) % 1000:03d}.gcode"
             (PRINTS_DIR / name).write_text(gcode)
-            print(f"[print] received {len(gcode.splitlines())} lines "
+            with _lock:
+                _status["line"] = len(gcode.splitlines())
+            print(f"[print] received {_status['line']} lines "
                   f"-> prints/{name}")
             self._json({"ok": True, "file": name})
         else:

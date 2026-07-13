@@ -51,13 +51,14 @@ static HardwareSerial &printer = Serial1;
 static char rxBuf[160];
 static size_t rxLen = 0;
 
-static void startJob() {
+static bool startJob() {
   if (jobFile) jobFile.close();
   jobFile = LittleFS.open(JOB_FILE, "r");
   jobLineNum = 0;
   jobError[0] = '\0';
   okReceived = false;
-  jobState = jobFile ? JOB_SEND : JOB_IDLE;
+  jobState = (jobFile && jobFile.size() > 0) ? JOB_SEND : JOB_IDLE;
+  return jobState == JOB_SEND;
 }
 
 static void abortJob(const char *why) {
@@ -67,7 +68,12 @@ static void abortJob(const char *why) {
   jobState = JOB_IDLE;
 }
 
-// Collect lines from the printer; flag Marlin's "ok" acks.
+// Collect lines from the printer; flag Marlin's "ok" acks. Any complete
+// line also refreshes the ok deadline: commands like G4 (the pen dwell
+// between strokes) only ack after ALL buffered motion finishes, which can
+// take far longer than OK_TIMEOUT_MS — but Marlin emits "echo:busy"
+// heartbeats every 2s meanwhile (HOST_KEEPALIVE_FEATURE). The timeout
+// must mean "printer went silent", not "printer is busy plotting".
 static void pumpPrinterRx() {
   while (printer.available()) {
     char c = (char)printer.read();
@@ -75,6 +81,7 @@ static void pumpPrinterRx() {
       if (rxLen > 0) {
         rxBuf[rxLen] = '\0';
         if (strncmp(rxBuf, "ok", 2) == 0) okReceived = true;
+        okDeadline = millis() + OK_TIMEOUT_MS;
         Serial.printf("[printer] %s\n", rxBuf);
         rxLen = 0;
       }
@@ -120,14 +127,20 @@ static AsyncWebServer server(80);
 
 // POST /api/print and /api/command: body chunks stream to JOB_FILE, then
 // the loop() state machine feeds it to the printer. Never blocks here.
+static size_t spoolLen = 0;
+static bool spoolError = false;
+
 static void gcodeBody(AsyncWebServerRequest *req, uint8_t *data, size_t len,
                       size_t index, size_t total) {
   if (jobState != JOB_IDLE) return; // request handler answers 409
-  File f = LittleFS.open(JOB_FILE, index == 0 ? "w" : "a");
-  if (f) {
-    f.write(data, len);
-    f.close();
+  if (index == 0) {
+    spoolLen = 0;
+    spoolError = false;
   }
+  File f = LittleFS.open(JOB_FILE, index == 0 ? "w" : "a");
+  if (!f || f.write(data, len) != len) spoolError = true;
+  if (f) f.close();
+  spoolLen += len;
 }
 
 static void gcodeRequest(AsyncWebServerRequest *req) {
@@ -135,7 +148,17 @@ static void gcodeRequest(AsyncWebServerRequest *req) {
     req->send(409, "application/json", "{\"error\":\"busy\"}");
     return;
   }
-  startJob();
+  if (spoolError) {
+    Serial.println("[job] spool failed: LittleFS write error");
+    req->send(500, "application/json", "{\"error\":\"storage write failed\"}");
+    return;
+  }
+  if (!startJob()) {
+    Serial.println("[job] start failed: job file missing or empty");
+    req->send(500, "application/json", "{\"error\":\"job file missing\"}");
+    return;
+  }
+  Serial.printf("[job] started, %u bytes spooled\n", (unsigned)spoolLen);
   req->send(200, "application/json", "{\"ok\":true,\"queued\":true}");
 }
 
