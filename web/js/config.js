@@ -14,10 +14,10 @@ const CONFIG = {
   // Pen lift servo. Adjust angles once the hardware is tuned.
   penUpCmd: 'M280 P0 S140',
   penDownCmd: 'M280 P0 S40',
-  penDwellMs: 250, // servo settle time after a pen move
+  penDwellMs: 10, // servo settle time after a pen move
 
-  drawFeed: 4000,
-  travelFeed: 4000,
+  drawFeed: 8000,
+  travelFeed: 8000,
 
   // Point simplification before emitting gcode.
   simplifyMinDist: 0.2, // drop consecutive points closer than this

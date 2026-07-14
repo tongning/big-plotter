@@ -13,11 +13,11 @@ import pathlib
 DEMOS_DIR = pathlib.Path(__file__).resolve().parent.parent / "web" / "demos"
 TILE = 150
 
-PEN_UP = "M280 P0 S90 ; pen up"
-PEN_DOWN = "M280 P0 S30 ; pen down"
-DWELL = "G4 P250"
-DRAW_FEED = 2000
-TRAVEL_FEED = 4000
+PEN_UP = "M280 P0 S140 ; pen up"
+PEN_DOWN = "M280 P0 S40 ; pen down"
+DWELL = "G4 P10"
+DRAW_FEED = 7000
+TRAVEL_FEED = 7000
 
 
 def fmt(v):

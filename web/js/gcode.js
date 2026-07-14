@@ -72,11 +72,13 @@ function gcClamp(p) {
 // --- emission ---
 
 function gcPenUp(lines) {
+  lines.push('M400');
   lines.push(CONFIG.penUpCmd + ' ; pen up');
   lines.push('G4 P' + CONFIG.penDwellMs);
 }
 
 function gcPenDown(lines) {
+  lines.push('M400');
   lines.push(CONFIG.penDownCmd + ' ; pen down');
   lines.push('G4 P' + CONFIG.penDwellMs);
 }
