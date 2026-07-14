@@ -17,7 +17,7 @@ const CONFIG = {
   // Pen lift servo. Adjust angles once the hardware is tuned.
   penUpCmd: 'M280 P0 S140',
   penDownCmd: 'M280 P0 S40',
-  penDwellMs: 10, // servo settle time after a pen move
+  penDwellMs: 40, // servo settle time after a pen move
 
   // Pen carousel servo (P1). One entry per color, in carousel order.
   // `css` is only for on-screen rendering; `cmd` rotates the carousel.
@@ -29,9 +29,9 @@ const CONFIG = {
     { id: 'red',    label: 'Red',    css: '#e03131', cmd: 'M280 P1 S91'  },
     { id: 'yellow', label: 'Yellow', css: '#eab308', cmd: 'M280 P1 S117' },
   ],
-  colorSettleMs: 400, // lift/rotate settle time around a color switch
+  colorSettleMs: 300, // lift/rotate settle time around a color switch
 
-  drawFeed: 8000,
+  drawFeed: 6000,
   travelFeed: 8000,
 
   // Point simplification before emitting gcode.
