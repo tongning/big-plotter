@@ -1,3 +1,47 @@
+# Multi-color pen support (2026-07-13)
+
+4 pens (green/blue/red/yellow) on a servo carousel (`M280 P1 S<angle>`:
+green 40, blue 62, red 91, yellow 117). Pen MUST be up while switching or
+the mechanism jams. Entirely client-side — no API change, server.py and
+main.cpp untouched.
+
+- [x] config.js: `pens` list (id/label/css/cmd), `colorSettleMs`, defaults
+      snapshot + localStorage overrides for pen up/down/color gcode
+- [x] gcode.js: `gcSelectColor()` (pen up → dwell → rotate → dwell);
+      strokesToGcode groups strokes by color (order of first appearance);
+      demoToGcode selects the default pen
+- [x] draw.js: strokes carry `color`; render in color; eraser/undo preserve it
+- [x] app.js: toolbar color swatches (from CONFIG.pens); board records get
+      per-polyline `colors`; board view + previews render colored; admin
+      pen-color buttons (pen up first!) + editable gcode settings
+      (localStorage-persisted)
+- [x] index.html + style.css: swatch UI, admin color row, gcode settings form
+- [x] test_gcode.mjs: color grouping, pen-up-before-every-color-switch
+      invariant, default color, demo color select (23/23 pass)
+- [x] verify: node tests + E2E multi-color submit against server.py (real
+      web/js sources → POST /api/print + /api/board → gcode + record
+      audited; left an "e2e color test" record on the dev board)
+- [x] docs: README (admin colors/settings, carousel angles, API `colors`
+      field, NUM_SERVOS 2), CLAUDE.md carousel invariant
+- [ ] hardware session: `pio run -t uploadfs`; tune S-angles + colorSettleMs
+      on the real carousel (admin gcode settings can do it live)
+
+## Review
+
+- No API change: `colors` rides inside the board record blob both servers
+  already store verbatim; gcode config overrides live in the kiosk
+  browser's localStorage (`plotterGcodeOverrides`), so server.py and
+  main.cpp are untouched.
+- Safety invariant enforced in one place (`gcSelectColor`) + audited by a
+  test that scans emitted gcode with a pen-state machine: no `M280 P1` ever
+  runs pen-down; admin swatches send pen-up + `G4` dwell before rotating.
+- Strokes grouped by color (first-appearance order) — each job picks up
+  each pen at most once; within a color, stroke order is preserved.
+- Old board records without `colors` still render dark (#3a3a4a).
+- NOT verified: interactive click-through (Chrome extension not
+  connected — again); swatch wiring is id-cross-checked HTML↔JS and all JS
+  is syntax-checked. Servo angles/settle need hardware tuning.
+
 # Bug hunt: drawings don't plot, jogs do (2026-07-13)
 
 Two real bugs found (both drawing-specific, jogs unaffected):

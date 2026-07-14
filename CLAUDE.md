@@ -52,6 +52,11 @@ tasks/                todo.md (plan/progress), lessons.md (corrections)
   clamps unhomed axes) and only on freshly-flashed firmware, so the
   coordinate clamping in `gcode.js` (margin 25.4mm) remains the primary
   crash protection — keep it strict.
+- **The pen carousel (`M280 P1`) may only rotate with the pen up** — it
+  jams otherwise. Never emit a raw color command: use `gcSelectColor()`
+  (gcode jobs) / `penColorCommand()` (admin), which lift the pen and dwell
+  first. Gcode emission groups strokes by color so each job selects each
+  pen at most once.
 - **Only the latest drawing is sent to the printer.** Board records
   (`POST /api/board`) are display-only state for the region picker.
 - Firmware stores board records as **comma-separated JSON objects** in

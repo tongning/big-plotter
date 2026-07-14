@@ -58,14 +58,17 @@ function renderBoard() {
   ctx.setLineDash([]);
 
   // existing drawings (packed [x, y] polylines, local y-down within tile)
-  ctx.strokeStyle = '#3a3a4a';
   ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
   for (const d of state.drawings) {
     const ox = d.x * bs;
     const oy = (CONFIG.boardH - d.y - d.size) * bs;
-    for (const pl of d.polylines) {
+    for (let pi = 0; pi < d.polylines.length; pi++) {
+      const pl = d.polylines[pi];
       if (pl.length === 0) continue;
+      // records predating pen colors have no `colors` array
+      ctx.strokeStyle = d.colors && d.colors[pi]
+        ? penById(d.colors[pi]).css : '#3a3a4a';
       ctx.beginPath();
       ctx.moveTo(ox + pl[0][0] * bs, oy + pl[0][1] * bs);
       for (let i = 1; i < pl.length; i++) {
@@ -217,6 +220,29 @@ $('#eraser-size').addEventListener('input', e => {
   surface.eraserRadius = Number(e.target.value);
 });
 
+// Round swatch button showing a pen's ink color (used in the toolbar and
+// the admin panel).
+function makeSwatch(pen, title, onclick) {
+  const b = document.createElement('button');
+  b.className = 'swatch';
+  b.style.setProperty('--pen', pen.css);
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.addEventListener('click', onclick);
+  return b;
+}
+
+const swatchHolder = $('#color-swatches');
+for (const pen of CONFIG.pens) {
+  const b = makeSwatch(pen, pen.label + ' pen', () => {
+    surface.color = pen.id;
+    swatchHolder.querySelectorAll('.swatch').forEach(x =>
+      x.classList.toggle('active', x === b));
+  });
+  b.classList.toggle('active', pen.id === surface.color);
+  swatchHolder.appendChild(b);
+}
+
 // A queued job can still die on the machine (e.g. "printer not
 // responding") — the POST succeeding only means the upload worked. Watch
 // /api/status after each submit and surface the outcome as a toast.
@@ -252,10 +278,12 @@ function watchJob() {
 $('#btn-submit').addEventListener('click', async () => {
   const btn = $('#btn-submit');
   const name = state.demo ? state.demo.name : 'visitor drawing';
-  let gcode, polylines;
+  let gcode, polylines, colors;
   if (state.demo) {
     gcode = demoToGcode(state.demo.text, state.region, state.demo.name);
     polylines = state.demo.localPolylines;
+    // demos plot with the default pen (demoToGcode selects it)
+    colors = polylines.map(() => CONFIG.pens[0].id);
   } else {
     if (surface.isEmpty()) {
       toast('Draw something first! ✏️');
@@ -263,6 +291,7 @@ $('#btn-submit').addEventListener('click', async () => {
     }
     gcode = strokesToGcode(surface.strokes, state.region, name);
     polylines = surface.strokes.map(s => gcSimplify(s.points));
+    colors = surface.strokes.map(s => penById(s.color).id);
   }
   // Copy before the network calls so it happens while the click's user
   // activation is still fresh (clipboard access requires it).
@@ -288,6 +317,7 @@ $('#btn-submit').addEventListener('click', async () => {
       y: Math.round(state.region.y * 10) / 10,
       size: CONFIG.tile,
       polylines: packPolylines(polylines),
+      colors,
       ts: Date.now(),
     }), 'application/json');
     toast(copied ? 'Sent to the plotter! 🖊️ (gcode copied to clipboard)'
@@ -363,6 +393,76 @@ $('#btn-pen-down').addEventListener('click', () =>
 $('#btn-motors-off').addEventListener('click', () =>
   sendCommand('M84\n', 'motors off'));
 
+// Color switching. The pen MUST be up while the carousel rotates or the
+// mechanism jams, so every switch lifts first and dwells before rotating.
+function penColorCommand(pen) {
+  return CONFIG.penUpCmd + '\nG4 P' + CONFIG.colorSettleMs + '\n' +
+         pen.cmd + '\n';
+}
+
+const adminColors = $('#admin-colors');
+for (const pen of CONFIG.pens) {
+  adminColors.appendChild(makeSwatch(pen,
+    'Switch to ' + pen.label.toLowerCase() + ' (lifts pen first)',
+    () => sendCommand(penColorCommand(pen), pen.label.toLowerCase() + ' pen')));
+}
+
+// Editable pen gcode (pen up/down + one command per color). Saved values
+// override config.js via localStorage — see applyGcodeOverrides().
+const cfgRows = $('#gcode-settings-rows');
+const cfgInputs = {}; // 'penUpCmd' | 'penDownCmd' | pen id -> input element
+function addCfgRow(key, label, value) {
+  const row = document.createElement('div');
+  row.className = 'gcode-cfg-row';
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  const input = document.createElement('input');
+  input.value = value;
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+  row.append(lab, input);
+  cfgRows.appendChild(row);
+  cfgInputs[key] = input;
+}
+addCfgRow('penUpCmd', 'pen up', CONFIG.penUpCmd);
+addCfgRow('penDownCmd', 'pen down', CONFIG.penDownCmd);
+for (const pen of CONFIG.pens) addCfgRow(pen.id, pen.label, pen.cmd);
+
+function fillCfgInputs() {
+  cfgInputs.penUpCmd.value = CONFIG.penUpCmd;
+  cfgInputs.penDownCmd.value = CONFIG.penDownCmd;
+  for (const pen of CONFIG.pens) cfgInputs[pen.id].value = pen.cmd;
+}
+
+$('#btn-gcode-save').addEventListener('click', () => {
+  const status = $('#admin-status');
+  for (const input of Object.values(cfgInputs)) {
+    if (!input.value.trim()) {
+      status.textContent = '✗ gcode settings: empty command';
+      return;
+    }
+  }
+  CONFIG.penUpCmd = cfgInputs.penUpCmd.value.trim();
+  CONFIG.penDownCmd = cfgInputs.penDownCmd.value.trim();
+  for (const pen of CONFIG.pens) pen.cmd = cfgInputs[pen.id].value.trim();
+  fillCfgInputs();
+  localStorage.setItem(GCODE_OVERRIDES_KEY, JSON.stringify({
+    penUpCmd: CONFIG.penUpCmd,
+    penDownCmd: CONFIG.penDownCmd,
+    penCmds: Object.fromEntries(CONFIG.pens.map(p => [p.id, p.cmd])),
+  }));
+  status.textContent = '✓ pen gcode saved';
+});
+
+$('#btn-gcode-reset').addEventListener('click', () => {
+  CONFIG.penUpCmd = GCODE_DEFAULTS.penUpCmd;
+  CONFIG.penDownCmd = GCODE_DEFAULTS.penDownCmd;
+  for (const pen of CONFIG.pens) pen.cmd = GCODE_DEFAULTS.penCmds[pen.id];
+  localStorage.removeItem(GCODE_OVERRIDES_KEY);
+  fillCfgInputs();
+  $('#admin-status').textContent = '✓ pen gcode reset to defaults';
+});
+
 const gcodeInput = $('#gcode-input');
 function sendCustomGcode() {
   const text = gcodeInput.value.trim();
@@ -417,7 +517,7 @@ function drawPreview(canvas, polylines) {
   const s = canvas.width / CONFIG.tile;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#1a1a2e';
+  ctx.strokeStyle = CONFIG.pens[0].css; // demos plot with the default pen
   ctx.lineWidth = 1.2;
   ctx.lineCap = 'round';
   for (const pl of polylines) {

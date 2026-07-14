@@ -11,9 +11,10 @@ class DrawingSurface {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.strokes = []; // [{points: [{x,y}, ...]}]
+    this.strokes = []; // [{points: [{x,y}, ...], color}]
     this.undoStack = [];
     this.tool = 'pen'; // pen | eraser | line | rect | ellipse
+    this.color = CONFIG.pens[0].id;
     this.eraserRadius = 6; // mm
     this.readonly = false;
     this.active = null; // in-progress stroke/shape
@@ -64,6 +65,7 @@ class DrawingSurface {
   _snapshot() {
     this.undoStack.push(this.strokes.map(s => ({
       points: s.points.map(p => ({ x: p.x, y: p.y })),
+      color: s.color,
     })));
     if (this.undoStack.length > 50) this.undoStack.shift();
   }
@@ -86,12 +88,12 @@ class DrawingSurface {
     this._snapshot();
     this._strokesBefore = JSON.stringify(this.strokes);
     if (this.tool === 'pen') {
-      this.active = { type: 'pen', points: [p] };
+      this.active = { type: 'pen', color: this.color, points: [p] };
     } else if (this.tool === 'eraser') {
       this.active = { type: 'eraser' };
       this._eraseAt(p);
     } else {
-      this.active = { type: this.tool, start: p, end: p };
+      this.active = { type: this.tool, color: this.color, start: p, end: p };
     }
     this.render();
   }
@@ -117,10 +119,10 @@ class DrawingSurface {
     const a = this.active;
     this.active = null;
     if (a.type === 'pen') {
-      this.strokes.push({ points: a.points });
+      this.strokes.push({ points: a.points, color: a.color });
     } else if (a.type !== 'eraser') {
       const pts = shapeToPolyline(a);
-      if (pts.length >= 2) this.strokes.push({ points: pts });
+      if (pts.length >= 2) this.strokes.push({ points: pts, color: a.color });
     }
     // Drop the undo snapshot if nothing actually changed (e.g. an eraser
     // drag that touched no strokes).
@@ -146,13 +148,13 @@ class DrawingSurface {
       let piece = [];
       for (const q of dense) {
         if (gcDist(q, p) <= r) {
-          if (piece.length >= 2) out.push({ points: piece });
+          if (piece.length >= 2) out.push({ points: piece, color: s.color });
           piece = [];
         } else {
           piece.push(q);
         }
       }
-      if (piece.length >= 2) out.push({ points: piece });
+      if (piece.length >= 2) out.push({ points: piece, color: s.color });
     }
     this.strokes = out;
   }
@@ -175,18 +177,16 @@ class DrawingSurface {
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#1a1a2e';
     ctx.lineWidth = PEN_DISPLAY_MM * s;
-    for (const st of this.strokes) this._drawPolyline(st.points, s);
+    for (const st of this.strokes) {
+      ctx.strokeStyle = penById(st.color).css;
+      this._drawPolyline(st.points, s);
+    }
 
-    if (this.active) {
-      if (this.active.type === 'pen') {
-        this._drawPolyline(this.active.points, s);
-      } else if (this.active.type !== 'eraser') {
-        ctx.strokeStyle = '#4a6cf7';
-        this._drawPolyline(shapeToPolyline(this.active), s);
-        ctx.strokeStyle = '#1a1a2e';
-      }
+    if (this.active && this.active.type !== 'eraser') {
+      ctx.strokeStyle = penById(this.active.color).css;
+      this._drawPolyline(this.active.type === 'pen'
+        ? this.active.points : shapeToPolyline(this.active), s);
     }
 
     if (this.tool === 'eraser' && this.cursor && !this.readonly) {

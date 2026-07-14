@@ -110,7 +110,7 @@ is labeled `+5V GND 0.2 0.3 RESET` (square pad = `+5V`).
   `M280 P0`).
 - Marlin config requirements: `SERIAL_PORT_2 0` (the TFT header) at
   **115200** baud (`BAUDRATE 115200` or `BAUDRATE_2 115200`), and
-  `NUM_SERVOS 1`.
+  `NUM_SERVOS 2` (pen lift + color carousel).
 - UART pins/baud are constants at the top of `esp32/src/main.cpp` if the
   wiring changes.
 
@@ -119,8 +119,12 @@ serial monitor should show `[printer] ok`. Then jog with the arrows, set the
 origin with 📍 (`G92 X0 Y0` + `M211 S1` — the machine has no endstops; this
 also arms the firmware's software endstops, see the Marlin section), and
 plot the star demo. The panel also has **Motors off** (`M84`, so the head
-can be positioned by hand) and a custom-gcode box for one-off commands
-(`M92` calibration, `M211 S0`, servo angle tests, …).
+can be positioned by hand), color swatches that rotate the pen carousel
+(always lifting the pen first — rotating with the pen down jams the
+mechanism), a collapsible **Pen gcode settings** form (edits the pen
+up/down/color commands live; saved to the browser's localStorage, **Reset
+defaults** restores `config.js` values), and a custom-gcode box for one-off
+commands (`M92` calibration, `M211 S0`, servo angle tests, …).
 
 ## Marlin firmware for the SKR 1.4
 
@@ -179,7 +183,7 @@ change in `marlin/config/pins_BTT_SKR_V1_4.h`.
 
 | Method   | Path           | Body           | Behavior |
 |----------|----------------|----------------|----------|
-| `GET`    | `/api/board`   | —              | `{"drawings":[{id,name,x,y,size,polylines,ts}]}` — everything plotted so far. `x`/`y` = board mm of the region's bottom-left corner; `polylines` = compact `[x,y]` mm pairs relative to the tile (y-down), used for thumbnails. |
+| `GET`    | `/api/board`   | —              | `{"drawings":[{id,name,x,y,size,polylines,colors,ts}]}` — everything plotted so far. `x`/`y` = board mm of the region's bottom-left corner; `polylines` = compact `[x,y]` mm pairs relative to the tile (y-down), used for thumbnails; `colors` = one pen id per polyline (older records may lack it). |
 | `POST`   | `/api/board`   | JSON record    | Append one drawing record. |
 | `POST`   | `/api/print`   | raw gcode (`application/octet-stream`) | Queue the (single, latest) drawing for the plotter. 409 if a job is active. |
 | `POST`   | `/api/command` | raw gcode (`application/octet-stream`) | Immediate machine command from the admin panel (jog, set-home, pen). 409 if busy. |
@@ -195,8 +199,15 @@ exist purely so the region picker shows what's already on the paper.
   (1in) keep-out margin on all sides. Emitted coordinates are clamped to the
   usable area as a final guard — important because the machine has no
   endstops.
-- Pen lift: servo via `M280` (`S90` up / `S30` down + `G4` settle dwell).
-  Commands, feeds, and angles live in `web/js/config.js`.
+- Pen lift: servo via `M280 P0` (`S140` up / `S40` down + `G4` settle
+  dwell). Commands, feeds, and angles live in `web/js/config.js`
+  (admin-panel edits override them via localStorage).
+- Pen colors: a second servo (`M280 P1`) rotates a 4-pen carousel — green
+  `S40`, blue `S62`, red `S91`, yellow `S117` (`CONFIG.pens`). Every switch
+  emits pen-up + a `colorSettleMs` dwell *before* rotating; switching with
+  the pen down jams the carousel. Visitor strokes carry a color, and gcode
+  emission groups strokes by color (first-appearance order) so each pen is
+  selected exactly once per job. Demos plot with the default (first) pen.
 - Conversion (`web/js/gcode.js`): strokes are simplified (min-distance +
   Douglas-Peucker), flipped from canvas y-down to plotter y-up, offset to
   the chosen region, and emitted as `G0` travels / `G1` draws.

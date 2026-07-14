@@ -77,6 +77,34 @@ header p { margin: 4px 0 0; color: #667; }
   font-family: ui-monospace, monospace;
 }
 
+#gcode-settings {
+  align-self: stretch;
+  font-size: 13px;
+  color: #556;
+}
+#gcode-settings summary { cursor: pointer; }
+.gcode-cfg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.gcode-cfg-row label {
+  width: 62px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.gcode-cfg-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid #ccd2e0;
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+#gcode-settings .admin-row { margin-top: 8px; justify-content: center; }
+
 section {
   width: 100%;
   max-width: 1100px;
@@ -167,6 +195,13 @@ section {
   max-width: 640px;
 }
 .toolbar .spacer { flex: 1; }
+.toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  background: #ccd2e0;
+  margin: 2px 4px;
+}
+#color-swatches { display: flex; gap: 6px; }
 #eraser-size-wrap { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #556; }
 #eraser-size { width: 90px; }
 
@@ -207,6 +242,24 @@ button.big { font-size: 20px; padding: 12px 28px; border-radius: 14px; }
 button.ghost { background: transparent; border-color: transparent; color: #556; }
 button.ghost:hover { background: #e8ebf2; }
 button.ghost.danger { color: #b04040; font-size: 13px; }
+
+/* round pen-color swatches (toolbar + admin). --pen is set per button by
+   app.js from CONFIG.pens; keep the ink color through hover/active. */
+button.swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(20, 20, 46, 0.18);
+  background: var(--pen);
+}
+button.swatch:hover { background: var(--pen); }
+button.swatch.active {
+  background: var(--pen);
+  border-color: #fff;
+  box-shadow: 0 0 0 2.5px #1a1a2e;
+}
+#admin-colors button.swatch { width: 24px; height: 24px; }
 
 /* ---------- toast ---------- */
 

@@ -83,6 +83,17 @@ function gcPenDown(lines) {
   lines.push('G4 P' + CONFIG.penDwellMs);
 }
 
+// Rotate the pen carousel. The pen MUST be up while the carousel turns or
+// the mechanism jams, so this always lifts first and dwells long enough
+// for the lift to physically finish before rotating.
+function gcSelectColor(lines, colorId) {
+  const pen = penById(colorId);
+  gcPenUp(lines);
+  lines.push('G4 P' + CONFIG.colorSettleMs + ' ; let pen lift fully');
+  lines.push(pen.cmd + ' ; select ' + pen.id + ' pen');
+  lines.push('G4 P' + CONFIG.colorSettleMs);
+}
+
 function gcHeader(name, region) {
   const lines = [];
   lines.push('; ' + name);
@@ -101,29 +112,42 @@ function gcFooter(lines) {
   return lines.join('\n') + '\n';
 }
 
-// strokes: [{points: [{x,y}, ...]}] in local (tile, y-down) mm.
+// strokes: [{points: [{x,y}, ...], color}] in local (tile, y-down) mm.
+// Strokes are grouped by color (groups ordered by first appearance, stroke
+// order preserved within a group) so each pen is picked up exactly once.
 function strokesToGcode(strokes, region, name) {
   const lines = gcHeader(name, region);
+  const groups = new Map(); // colorId -> strokes, in first-appearance order
   for (const s of strokes) {
-    const pts = gcSimplify(s.points).map(p => gcClamp(gcLocalToBoard(p, region)));
-    if (pts.length === 0) continue;
-    lines.push('G0 X' + gcFmt(pts[0].x) + ' Y' + gcFmt(pts[0].y) +
-               ' F' + CONFIG.travelFeed);
-    gcPenDown(lines);
-    for (let i = 1; i < pts.length; i++) {
-      lines.push('G1 X' + gcFmt(pts[i].x) + ' Y' + gcFmt(pts[i].y) +
-                 (i === 1 ? ' F' + CONFIG.drawFeed : ''));
+    const id = penById(s.color).id;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(s);
+  }
+  for (const [colorId, group] of groups) {
+    gcSelectColor(lines, colorId);
+    for (const s of group) {
+      const pts = gcSimplify(s.points).map(p => gcClamp(gcLocalToBoard(p, region)));
+      if (pts.length === 0) continue;
+      lines.push('G0 X' + gcFmt(pts[0].x) + ' Y' + gcFmt(pts[0].y) +
+                 ' F' + CONFIG.travelFeed);
+      gcPenDown(lines);
+      for (let i = 1; i < pts.length; i++) {
+        lines.push('G1 X' + gcFmt(pts[i].x) + ' Y' + gcFmt(pts[i].y) +
+                   (i === 1 ? ' F' + CONFIG.drawFeed : ''));
+      }
+      // A single point is a dot: pen down + up with no G1 in between.
+      gcPenUp(lines);
     }
-    // A single point is a dot: pen down + up with no G1 in between.
-    gcPenUp(lines);
   }
   return gcFooter(lines);
 }
 
 // Demo gcode is tile-relative (0..150). Wrap it in our header/footer and
-// shift every G0/G1 X/Y by the region offset.
+// shift every G0/G1 X/Y by the region offset. Demo files carry no color
+// commands, so they always plot with the default (first) pen.
 function demoToGcode(demoText, region, name) {
   const lines = gcHeader('demo: ' + name, region);
+  gcSelectColor(lines, CONFIG.pens[0].id);
   for (const raw of demoText.split('\n')) {
     if (raw.trim() === '') continue;
     if (/^\s*G0*[01]\b/i.test(raw.split(';')[0])) {

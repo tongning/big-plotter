@@ -11,7 +11,7 @@ const src = ['config.js', 'gcode.js']
   .join('\n');
 const g = new Function(`${src}; return {
   CONFIG, strokesToGcode, demoToGcode, parseGcode,
-  gcodePolylinesToLocal, gcSimplify, packPolylines,
+  gcodePolylinesToLocal, gcSimplify, packPolylines, penById,
 };`)();
 
 let failures = 0;
@@ -60,6 +60,56 @@ check('second stroke at correct height',
 const penDowns = gcode.split('\n').filter(l => l.startsWith(CONFIG.penDownCmd)).length;
 check('one pen-down per stroke incl. dot', penDowns === 3, `got ${penDowns}`);
 check('ends parked', gcode.trimEnd().endsWith('; park'));
+
+// --- pen colors ---
+// Scan a gcode text and assert the color-switch safety invariant: every
+// carousel command (M280 P1 …) happens with the pen up.
+function colorSwitchAudit(text) {
+  let penDown = false, switchesWhileDown = 0;
+  const colorCmds = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith(CONFIG.penDownCmd)) penDown = true;
+    else if (line.startsWith(CONFIG.penUpCmd)) penDown = false;
+    else if (/^M280\s+P1\b/i.test(line)) {
+      colorCmds.push(line.split(';')[0].trim());
+      if (penDown) switchesWhileDown++;
+    }
+  }
+  return { colorCmds, switchesWhileDown };
+}
+
+check('strokes default to the first pen (no color set)',
+  colorSwitchAudit(gcode).colorCmds.join() === g.penById(undefined).cmd,
+  JSON.stringify(colorSwitchAudit(gcode).colorCmds));
+
+const colored = g.strokesToGcode([
+  { points: [{ x: 10, y: 10 }, { x: 20, y: 10 }], color: 'red' },
+  { points: [{ x: 10, y: 30 }, { x: 20, y: 30 }], color: 'blue' },
+  { points: [{ x: 10, y: 50 }, { x: 20, y: 50 }], color: 'red' },
+], region, 'colors');
+const audit = colorSwitchAudit(colored);
+check('color groups in first-appearance order, one switch per color',
+  audit.colorCmds.join('|') ===
+    g.penById('red').cmd + '|' + g.penById('blue').cmd,
+  JSON.stringify(audit.colorCmds));
+check('pen is up at every color switch', audit.switchesWhileDown === 0);
+// red group = strokes 1 and 3 back to back: both red strokes plot between
+// the red switch and the blue switch (y 10 and 50 -> board 240 and 200).
+const blueSwitchAt = colored.indexOf(g.penById('blue').cmd);
+const redYs = [...colored.slice(0, blueSwitchAt).matchAll(/^G0 X[\d.]+ Y([\d.]+)/gm)]
+  .map(m => +m[1]);
+check('same-color strokes are grouped', redYs.join() === '240,200',
+  JSON.stringify(redYs));
+check('grouping preserves every stroke', // 3 stroke travels + park
+  (colored.match(/^G0 X/gm) || []).length === 4);
+
+const demoAudit = colorSwitchAudit(
+  g.demoToGcode('G0 X10 Y10\nG1 X20 Y20\n', region, 'd'));
+check('demo selects the default pen, pen up',
+  demoAudit.colorCmds.join() === CONFIG.pens[0].cmd &&
+    demoAudit.switchesWhileDown === 0,
+  JSON.stringify(demoAudit));
 
 // --- simplification ---
 const noisy = { points: [] };
