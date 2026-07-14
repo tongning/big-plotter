@@ -1,3 +1,37 @@
+# Tile size 150→100mm + admin-configurable (2026-07-13)
+
+- [x] config.js: tile 100 default; `demoSize: 150` (authoring size of demo
+      files); settings overrides renamed (`plotterSettings`,
+      SETTINGS_DEFAULTS, `maxTile()`) and now carry `tile`
+- [x] gcode.js: demoToGcode + gcodePolylinesToLocal scale by
+      tile/demoSize; coordinate-system comment updated
+- [x] app.js: demos store parsed *native* polylines (local conversion on
+      use, so a runtime tile change can't leave stale scales); settings
+      form gains a "tile mm" row (validated 20–maxTile); tileChanged()
+      re-clamps region, repaints board, refreshes label/underlay/demo
+      preview only if the draw view is visible (state.demo lingers after
+      showBoard — guard against yanking the kiosk into the draw view)
+- [x] index.html/style.css: #machine-settings rename, .cfg-row
+- [x] tests: expectations rescaled to 100mm tile; new demo-scaling +
+      in-region-bounds checks (27/27)
+- [x] docs: README intro/admin/demos, CLAUDE.md coordinate invariant
+- Note: board records store `size` per record, so old 150mm records render
+      correctly next to new 100mm ones (renderBoard/boardRecordToLocal
+      already use rec.size). Firmware/server untouched.
+
+# Zoom-into-region animation (2026-07-13)
+
+- [x] app.js: `zoomIntoRegion()` — snapshot of the selected region (clean
+      board render, no selection box) flies from its board position to the
+      draw canvas rect (transform transition), then fades to reveal the
+      editor; cosmetic only, draw view live underneath from frame one
+- [x] enterDraw(): zooms only when coming from the board view; honors
+      prefers-reduced-motion; "start blank instead" doesn't re-zoom
+- [x] style.css: .zoom-overlay (fixed, pointer-events none, 450ms
+      transform + delayed 250ms opacity fade)
+- [x] verify: syntax + 26/26 tests; NOT visually verified — Chrome
+      extension still not connected; needs a quick manual look
+
 # Faint underlay of existing drawings in the draw view (2026-07-13)
 
 - [x] gcode.js: `boardRecordToLocal(rec, region)` — packed record polylines

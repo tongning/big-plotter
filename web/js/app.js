@@ -10,7 +10,8 @@ const state = {
     y: (CONFIG.boardH - CONFIG.tile) / 2,
   },
   drawings: [], // records already plotted on the board
-  demos: [],    // [{id, name, text, localPolylines}]
+  demos: [],    // [{id, name, text, native}] — native = parsed demoSize
+                // polylines; converted to local per use (tile can change)
   demo: null,   // demo selected for the current draw session, or null
 };
 
@@ -40,7 +41,7 @@ boardCanvas.width = BOARD_PX;
 boardCanvas.height = Math.round(BOARD_PX * CONFIG.boardH / CONFIG.boardW);
 const bs = BOARD_PX / CONFIG.boardW; // canvas px per mm
 
-function renderBoard() {
+function renderBoard(showSelection = true) {
   const ctx = boardCanvas.getContext('2d');
   const W = boardCanvas.width, H = boardCanvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -79,6 +80,7 @@ function renderBoard() {
   }
 
   // selected region
+  if (!showSelection) return; // clean render for the zoom snapshot
   const r = state.region;
   const rx = r.x * bs, ry = (CONFIG.boardH - r.y - CONFIG.tile) * bs;
   const rs = CONFIG.tile * bs;
@@ -174,28 +176,92 @@ function showBoard() {
   $('#view-board').classList.remove('hidden');
 }
 
-function enterDraw(demo) {
-  state.demo = demo;
-  $('#view-board').classList.add('hidden');
-  $('#view-draw').classList.remove('hidden');
-  const r = state.region;
-  // Anything already plotted where this region sits shows faintly under
-  // the new drawing (setStrokes below triggers the render).
-  const t = CONFIG.tile;
-  surface.background = [];
+// Existing board records overlapping the selected region, in the
+// region's local frame — the faint underlay in the draw view.
+function regionBackground() {
+  const r = state.region, t = CONFIG.tile;
+  const out = [];
   for (const d of state.drawings) {
     if (d.x + d.size <= r.x || d.x >= r.x + t ||
         d.y + d.size <= r.y || d.y >= r.y + t) continue;
-    surface.background.push(...boardRecordToLocal(d, r));
+    out.push(...boardRecordToLocal(d, r));
   }
+  return out;
+}
+
+function updateRegionLabel() {
+  const r = state.region;
   $('#region-label').textContent =
     'Spot: X ' + Math.round(r.x) + '–' + Math.round(r.x + CONFIG.tile) +
     'mm, Y ' + Math.round(r.y) + '–' + Math.round(r.y + CONFIG.tile) + 'mm';
+}
+
+// Where the selected region sits on screen (viewport px), for the zoom.
+function regionScreenRect() {
+  const rect = boardCanvas.getBoundingClientRect();
+  const r = state.region;
+  return {
+    left: rect.left + (r.x / CONFIG.boardW) * rect.width,
+    top: rect.top + ((CONFIG.boardH - r.y - CONFIG.tile) / CONFIG.boardH) * rect.height,
+    size: (CONFIG.tile / CONFIG.boardW) * rect.width,
+  };
+}
+
+// Fly a snapshot of the selected region from its spot on the board to the
+// drawing canvas, then fade it out to reveal the editor. Purely cosmetic:
+// the draw view is fully functional underneath from the start.
+function zoomIntoRegion(from) {
+  const target = $('#draw-canvas').getBoundingClientRect();
+  if (target.width === 0 || from.size === 0) return;
+
+  // Snapshot the region's pixels without the blue selection box.
+  renderBoard(false);
+  const r = state.region;
+  const srcSize = CONFIG.tile * bs;
+  const snap = document.createElement('canvas');
+  snap.width = snap.height = Math.round(srcSize);
+  snap.getContext('2d').drawImage(boardCanvas,
+    r.x * bs, (CONFIG.boardH - r.y - CONFIG.tile) * bs, srcSize, srcSize,
+    0, 0, snap.width, snap.height);
+  renderBoard();
+
+  const ov = document.createElement('div');
+  ov.className = 'zoom-overlay';
+  ov.style.left = target.left + 'px';
+  ov.style.top = target.top + 'px';
+  ov.style.width = target.width + 'px';
+  ov.style.height = target.height + 'px';
+  ov.style.transform = 'translate(' + (from.left - target.left) + 'px,' +
+    (from.top - target.top) + 'px) scale(' + (from.size / target.width) + ')';
+  ov.appendChild(snap);
+  document.body.appendChild(ov);
+
+  // Two rAFs so the start transform is committed before transitioning.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    ov.style.transform = 'translate(0px, 0px) scale(1)';
+    ov.style.opacity = '0';
+  }));
+  setTimeout(() => ov.remove(), 900);
+}
+
+function enterDraw(demo) {
+  state.demo = demo;
+  // Zoom only when coming from the board view (not e.g. "start blank
+  // instead" inside the draw view), and honor reduced-motion.
+  const zoomFrom = $('#view-board').classList.contains('hidden') ||
+    matchMedia('(prefers-reduced-motion: reduce)').matches
+    ? null : regionScreenRect();
+  $('#view-board').classList.add('hidden');
+  $('#view-draw').classList.remove('hidden');
+  // Anything already plotted where this region sits shows faintly under
+  // the new drawing (setStrokes below triggers the render).
+  surface.background = regionBackground();
+  updateRegionLabel();
   const banner = $('#demo-banner');
   if (demo) {
     surface.readonly = true;
-    surface.setStrokes(demo.localPolylines.map(pl => ({
-      points: pl.map(p => ({ x: p.x, y: p.y })),
+    surface.setStrokes(gcodePolylinesToLocal(demo.native).map(pl => ({
+      points: pl,
     })));
     $('#toolbar').classList.add('hidden');
     banner.classList.remove('hidden');
@@ -207,6 +273,7 @@ function enterDraw(demo) {
     $('#toolbar').classList.remove('hidden');
     banner.classList.add('hidden');
   }
+  if (zoomFrom) zoomIntoRegion(zoomFrom);
 }
 
 $('#btn-start').addEventListener('click', () => enterDraw(null));
@@ -290,7 +357,7 @@ $('#btn-submit').addEventListener('click', async () => {
   let gcode, polylines, colors;
   if (state.demo) {
     gcode = demoToGcode(state.demo.text, state.region, state.demo.name);
-    polylines = state.demo.localPolylines;
+    polylines = gcodePolylinesToLocal(state.demo.native);
     // demos plot with the default pen (demoToGcode selects it)
     colors = polylines.map(() => CONFIG.pens[0].id);
   } else {
@@ -416,13 +483,14 @@ for (const pen of CONFIG.pens) {
     () => sendCommand(penColorCommand(pen), pen.label.toLowerCase() + ' pen')));
 }
 
-// Editable pen gcode (pen up/down + one command per color). Saved values
-// override config.js via localStorage — see applyGcodeOverrides().
-const cfgRows = $('#gcode-settings-rows');
-const cfgInputs = {}; // 'penUpCmd' | 'penDownCmd' | pen id -> input element
+// Editable settings: drawing-region (tile) size + pen up/down/color
+// gcode. Saved values override config.js via localStorage — see
+// applySettingsOverrides().
+const cfgRows = $('#machine-settings-rows');
+const cfgInputs = {}; // 'tile' | 'penUpCmd' | 'penDownCmd' | pen id -> input
 function addCfgRow(key, label, value) {
   const row = document.createElement('div');
-  row.className = 'gcode-cfg-row';
+  row.className = 'cfg-row';
   const lab = document.createElement('label');
   lab.textContent = label;
   const input = document.createElement('input');
@@ -433,43 +501,72 @@ function addCfgRow(key, label, value) {
   cfgRows.appendChild(row);
   cfgInputs[key] = input;
 }
+addCfgRow('tile', 'tile mm', CONFIG.tile);
 addCfgRow('penUpCmd', 'pen up', CONFIG.penUpCmd);
 addCfgRow('penDownCmd', 'pen down', CONFIG.penDownCmd);
 for (const pen of CONFIG.pens) addCfgRow(pen.id, pen.label, pen.cmd);
 
 function fillCfgInputs() {
+  cfgInputs.tile.value = CONFIG.tile;
   cfgInputs.penUpCmd.value = CONFIG.penUpCmd;
   cfgInputs.penDownCmd.value = CONFIG.penDownCmd;
   for (const pen of CONFIG.pens) cfgInputs[pen.id].value = pen.cmd;
 }
 
-$('#btn-gcode-save').addEventListener('click', () => {
+// Region size changed: keep the selection on the board and repaint both
+// views (an open drawing keeps its strokes' mm positions).
+function tileChanged() {
+  state.region = clampRegion(state.region.x, state.region.y);
+  renderBoard();
+  if ($('#view-draw').classList.contains('hidden')) return;
+  updateRegionLabel();
+  if (state.demo) {
+    enterDraw(state.demo); // rescale a previewed demo
+  } else {
+    surface.background = regionBackground();
+    surface.render();
+  }
+}
+
+$('#btn-settings-save').addEventListener('click', () => {
   const status = $('#admin-status');
-  for (const input of Object.values(cfgInputs)) {
-    if (!input.value.trim()) {
-      status.textContent = '✗ gcode settings: empty command';
+  const tile = parseFloat(cfgInputs.tile.value);
+  if (!(tile >= 20 && tile <= maxTile())) {
+    status.textContent = '✗ tile size must be 20–' + maxTile() + 'mm';
+    return;
+  }
+  for (const [key, input] of Object.entries(cfgInputs)) {
+    if (key !== 'tile' && !input.value.trim()) {
+      status.textContent = '✗ settings: empty command';
       return;
     }
   }
+  const tileWas = CONFIG.tile;
+  CONFIG.tile = tile;
   CONFIG.penUpCmd = cfgInputs.penUpCmd.value.trim();
   CONFIG.penDownCmd = cfgInputs.penDownCmd.value.trim();
   for (const pen of CONFIG.pens) pen.cmd = cfgInputs[pen.id].value.trim();
   fillCfgInputs();
-  localStorage.setItem(GCODE_OVERRIDES_KEY, JSON.stringify({
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+    tile: CONFIG.tile,
     penUpCmd: CONFIG.penUpCmd,
     penDownCmd: CONFIG.penDownCmd,
     penCmds: Object.fromEntries(CONFIG.pens.map(p => [p.id, p.cmd])),
   }));
-  status.textContent = '✓ pen gcode saved';
+  if (CONFIG.tile !== tileWas) tileChanged();
+  status.textContent = '✓ settings saved';
 });
 
-$('#btn-gcode-reset').addEventListener('click', () => {
-  CONFIG.penUpCmd = GCODE_DEFAULTS.penUpCmd;
-  CONFIG.penDownCmd = GCODE_DEFAULTS.penDownCmd;
-  for (const pen of CONFIG.pens) pen.cmd = GCODE_DEFAULTS.penCmds[pen.id];
-  localStorage.removeItem(GCODE_OVERRIDES_KEY);
+$('#btn-settings-reset').addEventListener('click', () => {
+  const tileWas = CONFIG.tile;
+  CONFIG.tile = SETTINGS_DEFAULTS.tile;
+  CONFIG.penUpCmd = SETTINGS_DEFAULTS.penUpCmd;
+  CONFIG.penDownCmd = SETTINGS_DEFAULTS.penDownCmd;
+  for (const pen of CONFIG.pens) pen.cmd = SETTINGS_DEFAULTS.penCmds[pen.id];
+  localStorage.removeItem(SETTINGS_KEY);
   fillCfgInputs();
-  $('#admin-status').textContent = '✓ pen gcode reset to defaults';
+  if (CONFIG.tile !== tileWas) tileChanged();
+  $('#admin-status').textContent = '✓ settings reset to defaults';
 });
 
 const gcodeInput = $('#gcode-input');
@@ -499,7 +596,7 @@ async function loadDemos() {
         id: entry.id,
         name: entry.name,
         text,
-        localPolylines: gcodePolylinesToLocal(parseGcode(text)),
+        native: parseGcode(text),
       });
     } catch (err) {
       console.warn('demo failed to load:', entry.file, err);
@@ -512,7 +609,7 @@ async function loadDemos() {
     const cv = document.createElement('canvas');
     cv.width = 96;
     cv.height = 96;
-    drawPreview(cv, demo.localPolylines);
+    drawPreview(cv, gcodePolylinesToLocal(demo.native));
     const label = document.createElement('span');
     label.textContent = demo.name;
     card.append(cv, label);

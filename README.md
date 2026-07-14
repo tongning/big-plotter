@@ -1,9 +1,10 @@
 # Big Plotter
 
-Interactive pen-plotter exhibit for Open Sauce. Visitors pick a 150×150mm
-spot on a 30in × 20in board, make a drawing in a web app (or choose a
-ready-made demo), and hit **Draw it!** — the drawing is converted to gcode in
-the browser and streamed to the plotter.
+Interactive pen-plotter exhibit for Open Sauce. Visitors pick a square
+spot (100×100mm by default, adjustable in the admin settings) on a
+30in × 20in board, make a drawing in a web app (or choose a ready-made
+demo), and hit **Draw it!** — the drawing is converted to gcode in the
+browser and streamed to the plotter.
 
 ```
 visitor's browser ──WiFi──> ESP32-S2 Mini ──UART──> SKR 1.4 (Marlin) ──> pen
@@ -121,10 +122,11 @@ also arms the firmware's software endstops, see the Marlin section), and
 plot the star demo. The panel also has **Motors off** (`M84`, so the head
 can be positioned by hand), color swatches that rotate the pen carousel
 (always lifting the pen first — rotating with the pen down jams the
-mechanism), a collapsible **Pen gcode settings** form (edits the pen
-up/down/color commands live; saved to the browser's localStorage, **Reset
-defaults** restores `config.js` values), and a custom-gcode box for one-off
-commands (`M92` calibration, `M211 S0`, servo angle tests, …).
+mechanism), a collapsible **Settings** form (tile size and the pen
+up/down/color commands, editable live; saved to the browser's
+localStorage, **Reset defaults** restores `config.js` values), and a
+custom-gcode box for one-off commands (`M92` calibration, `M211 S0`,
+servo angle tests, …).
 
 ## Marlin firmware for the SKR 1.4
 
@@ -214,7 +216,8 @@ exist purely so the region picker shows what's already on the paper.
 
 ## Demo drawings
 
-`web/demos/*.gcode` are tile-relative (coords 0–150mm, y-up, `G0`/`G1` + pen
-commands only). The app parses them for previews and rewrites X/Y with the
-region offset at send time. Regenerate with `python3 server/make_demos.py`
-(edit that script to add demos, and list them in `web/demos/manifest.json`).
+`web/demos/*.gcode` are authored on a 150mm tile (`CONFIG.demoSize`;
+coords 0–150mm, y-up, `G0`/`G1` + pen commands only). The app parses them
+for previews and rescales/offsets X/Y to the active tile size and region
+at send time. Regenerate with `python3 server/make_demos.py` (edit that
+script to add demos, and list them in `web/demos/manifest.json`).

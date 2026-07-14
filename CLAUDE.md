@@ -38,12 +38,14 @@ tasks/                todo.md (plan/progress), lessons.md (corrections)
   `esp32/src/main.cpp` implement the same endpoints. Any API change must be
   made in both, and the frontend must keep working against both.
 - **Coordinate systems** (documented at the top of `web/js/gcode.js`):
-  - *local*: mm within a 150mm tile, origin top-left, **y-down** (canvas).
+  - *local*: mm within a tile (`CONFIG.tile`, default 100mm,
+    admin-adjustable at runtime), origin top-left, **y-down** (canvas).
   - *board*: plotter mm, origin bottom-left, **y-up**. Region `{x,y}` is the
     tile's bottom-left corner in board coords.
-  - Demo gcode files are board-style axes but tile-relative (0–150, y-up);
-    only `G0`/`G1` moves + pen commands, no header/footer — the app wraps
-    and offsets them at send time.
+  - Demo gcode files are board-style axes, authored on a 150mm tile
+    (`CONFIG.demoSize`, fixed); only `G0`/`G1` moves + pen commands, no
+    header/footer — the app wraps, scales to `CONFIG.tile`, and offsets
+    them at send time.
 - **Drawings are vectors end-to-end.** Strokes are polylines; the eraser
   splits geometry rather than painting pixels. Never rasterize.
 - **The machine has no endstops.** "Home" = jog to origin + `G92 X0 Y0`,

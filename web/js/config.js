@@ -8,8 +8,11 @@ const CONFIG = {
   boardH: 508,
   // Keep-out border on all sides (1 in). No pen moves land inside it.
   margin: 25.4,
-  // Side length of a user drawing region.
-  tile: 150,
+  // Side length of a user drawing region (admin-configurable at runtime).
+  tile: 100,
+  // Demo gcode files are authored on this tile size (see make_demos.py);
+  // they get scaled by tile/demoSize at preview/send time.
+  demoSize: 150,
 
   // Pen lift servo. Adjust angles once the hardware is tuned.
   penUpCmd: 'M280 P0 S140',
@@ -48,24 +51,33 @@ function penById(id) {
   return CONFIG.pens.find(p => p.id === id) || CONFIG.pens[0];
 }
 
-// Factory values of the admin-editable gcode, for the reset button.
-const GCODE_DEFAULTS = {
+// Largest tile that still fits inside the keep-out margins.
+function maxTile() {
+  return Math.min(CONFIG.boardW, CONFIG.boardH) - 2 * CONFIG.margin;
+}
+
+// Factory values of the admin-editable settings, for the reset button.
+const SETTINGS_DEFAULTS = {
+  tile: CONFIG.tile,
   penUpCmd: CONFIG.penUpCmd,
   penDownCmd: CONFIG.penDownCmd,
   penCmds: Object.fromEntries(CONFIG.pens.map(p => [p.id, p.cmd])),
 };
 
-// The admin panel can override the pen up/down/color gcode; overrides
-// persist in localStorage so the kiosk keeps them across reloads.
-// (localStorage is absent under node in test_gcode.mjs.)
-const GCODE_OVERRIDES_KEY = 'plotterGcodeOverrides';
-(function applyGcodeOverrides() {
+// The admin panel can override the tile size and pen up/down/color gcode;
+// overrides persist in localStorage so the kiosk keeps them across
+// reloads. (localStorage is absent under node in test_gcode.mjs.)
+const SETTINGS_KEY = 'plotterSettings';
+(function applySettingsOverrides() {
   if (typeof localStorage === 'undefined') return;
   let o;
   try {
-    o = JSON.parse(localStorage.getItem(GCODE_OVERRIDES_KEY) || '{}');
+    o = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
   } catch (err) {
     return; // corrupt overrides: keep factory defaults
+  }
+  if (typeof o.tile === 'number' && o.tile >= 20 && o.tile <= maxTile()) {
+    CONFIG.tile = o.tile;
   }
   if (typeof o.penUpCmd === 'string') CONFIG.penUpCmd = o.penUpCmd;
   if (typeof o.penDownCmd === 'string') CONFIG.penDownCmd = o.penDownCmd;
