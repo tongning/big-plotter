@@ -12,6 +12,9 @@ class DrawingSurface {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.strokes = []; // [{points: [{x,y}, ...], color}]
+    // What's already plotted in this spot, shown faintly under the new
+    // drawing. Display only: never erased, submitted, or undone.
+    this.background = []; // [{points, color}], color null = pre-color record
     this.undoStack = [];
     this.tool = 'pen'; // pen | eraser | line | rect | ellipse
     this.color = CONFIG.pens[0].id;
@@ -178,6 +181,17 @@ class DrawingSurface {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = PEN_DISPLAY_MM * s;
+
+    if (this.background.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      for (const b of this.background) {
+        ctx.strokeStyle = b.color ? penById(b.color).css : '#3a3a4a';
+        this._drawPolyline(b.points, s);
+      }
+      ctx.restore();
+    }
+
     for (const st of this.strokes) {
       ctx.strokeStyle = penById(st.color).css;
       this._drawPolyline(st.points, s);

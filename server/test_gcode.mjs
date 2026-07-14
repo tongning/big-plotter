@@ -12,6 +12,7 @@ const src = ['config.js', 'gcode.js']
 const g = new Function(`${src}; return {
   CONFIG, strokesToGcode, demoToGcode, parseGcode,
   gcodePolylinesToLocal, gcSimplify, packPolylines, penById,
+  boardRecordToLocal,
 };`)();
 
 let failures = 0;
@@ -110,6 +111,28 @@ check('demo selects the default pen, pen up',
   demoAudit.colorCmds.join() === CONFIG.pens[0].cmd &&
     demoAudit.switchesWhileDown === 0,
   JSON.stringify(demoAudit));
+
+// --- board record -> local frame (faint underlay in the draw view) ---
+const rec = {
+  x: 300, y: 200, size: 150,
+  polylines: [[[0, 0], [150, 150]]], // tile top-left -> bottom-right
+  colors: ['red'],
+};
+const same = g.boardRecordToLocal(rec, { x: 300, y: 200 });
+check('record in its own region maps to identity',
+  same[0].points[0].x === 0 && same[0].points[0].y === 0 &&
+    same[0].points[1].x === 150 && same[0].points[1].y === 150 &&
+    same[0].color === 'red',
+  JSON.stringify(same));
+// region 50mm left/below the record: the record sits 50 right and 50 up,
+// so its top-left lands at x=50 and ABOVE the visible tile (y=-50).
+const shifted = g.boardRecordToLocal(rec, { x: 250, y: 150 });
+check('record offset into an overlapping region',
+  shifted[0].points[0].x === 50 && shifted[0].points[0].y === -50,
+  JSON.stringify(shifted[0].points[0]));
+check('pre-color record maps with null color',
+  g.boardRecordToLocal({ ...rec, colors: undefined },
+    { x: 300, y: 200 })[0].color === null);
 
 // --- simplification ---
 const noisy = { points: [] };

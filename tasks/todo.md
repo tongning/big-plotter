@@ -1,3 +1,15 @@
+# Faint underlay of existing drawings in the draw view (2026-07-13)
+
+- [x] gcode.js: `boardRecordToLocal(rec, region)` — packed record polylines
+      re-expressed in another region's local y-down frame (pure, tested)
+- [x] draw.js: `surface.background` layer — rendered at alpha 0.22 under
+      strokes, per-record pen colors (dark for pre-color records); display
+      only (never erased/undone/submitted)
+- [x] app.js: enterDraw() fills background from records whose tile
+      overlaps the chosen region (AABB test), demo view included
+- [x] verify: 26/26 headless checks (identity + offset mapping, null-color
+      fallback); syntax-checked; interactive pass still pending Chrome
+
 # Multi-color pen support (2026-07-13)
 
 4 pens (green/blue/red/yellow) on a servo carousel (`M280 P1 S<angle>`:

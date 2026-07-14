@@ -179,6 +179,15 @@ function enterDraw(demo) {
   $('#view-board').classList.add('hidden');
   $('#view-draw').classList.remove('hidden');
   const r = state.region;
+  // Anything already plotted where this region sits shows faintly under
+  // the new drawing (setStrokes below triggers the render).
+  const t = CONFIG.tile;
+  surface.background = [];
+  for (const d of state.drawings) {
+    if (d.x + d.size <= r.x || d.x >= r.x + t ||
+        d.y + d.size <= r.y || d.y >= r.y + t) continue;
+    surface.background.push(...boardRecordToLocal(d, r));
+  }
   $('#region-label').textContent =
     'Spot: X ' + Math.round(r.x) + '–' + Math.round(r.x + CONFIG.tile) +
     'mm, Y ' + Math.round(r.y) + '–' + Math.round(r.y + CONFIG.tile) + 'mm';

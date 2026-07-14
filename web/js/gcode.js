@@ -61,6 +61,20 @@ function gcLocalToBoard(p, region) {
   return { x: region.x + p.x, y: region.y + (CONFIG.tile - p.y) };
 }
 
+// Re-express a board record's polylines (packed [x,y] pairs, y-down within
+// the record's own tile) in another region's local frame. Used to show
+// what's already on the paper under a new drawing in the same spot; points
+// can fall outside 0..tile when the tiles only partly overlap.
+function boardRecordToLocal(rec, region) {
+  return rec.polylines.map((pl, i) => ({
+    color: rec.colors ? rec.colors[i] : null,
+    points: pl.map(([px, py]) => ({
+      x: rec.x + px - region.x,
+      y: CONFIG.tile - (rec.y + (rec.size - py) - region.y),
+    })),
+  }));
+}
+
 // Last-line safety guard: never emit a coordinate inside the margin.
 function gcClamp(p) {
   return {
