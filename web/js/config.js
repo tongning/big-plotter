@@ -4,12 +4,12 @@
 // Distances in mm, feed rates in mm/min.
 const CONFIG = {
   // Physical board: X = 30 in, Y = 20 in, origin at bottom-left.
-  boardW: 762,
-  boardH: 508,
+  boardW: 700,
+  boardH: 500,
   // Keep-out border on all sides (1 in). No pen moves land inside it.
-  margin: 25.4,
+  margin: 25,
   // Side length of a user drawing region (admin-configurable at runtime).
-  tile: 100,
+  tile: 70,
   // Demo gcode files are authored on this tile size (see make_demos.py);
   // they get scaled by tile/demoSize at preview/send time.
   demoSize: 150,
