@@ -31,7 +31,7 @@ const CONFIG = {
   ],
   colorSettleMs: 300, // lift/rotate settle time around a color switch
 
-  drawFeed: 6000,
+  drawFeed: 4500,
   travelFeed: 8000,
 
   // Point simplification before emitting gcode.
