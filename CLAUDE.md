@@ -11,13 +11,11 @@ web/                  the web app; vanilla HTML/CSS/JS, NO build step, no
                       frameworks — this folder is flashed verbatim to the
                       ESP32's LittleFS, so keep it small and dependency-free
   js/config.js        all tunables: board geometry, servo angles, feeds
-  js/gcode.js         strokes→gcode, simplification, demo gcode parse/offset
+  js/gcode.js         strokes→gcode and simplification
   js/draw.js          vector canvas editor (DrawingSurface class)
   js/app.js           views, region picker, admin panel, API calls
-  demos/              pre-made drawings as tile-relative gcode + manifest
 server/
   server.py           desktop mock of the ESP32 API (stdlib only) — port 8080
-  make_demos.py       regenerates web/demos/*.gcode
   test_gcode.mjs      headless tests that run the real web/js sources
 esp32/
   src/main.cpp        entire firmware; config constants at the top
@@ -42,10 +40,6 @@ tasks/                todo.md (plan/progress), lessons.md (corrections)
     admin-adjustable at runtime), origin top-left, **y-down** (canvas).
   - *board*: plotter mm, origin bottom-left, **y-up**. Region `{x,y}` is the
     tile's bottom-left corner in board coords.
-  - Demo gcode files are board-style axes, authored on a 150mm tile
-    (`CONFIG.demoSize`, fixed); only `G0`/`G1` moves + pen commands, no
-    header/footer — the app wraps, scales to `CONFIG.tile`, and offsets
-    them at send time.
 - **Drawings are vectors end-to-end.** Strokes are polylines; the eraser
   splits geometry rather than painting pixels. Never rasterize.
 - **The machine has no endstops.** "Home" = jog to origin + `G92 X0 Y0`,

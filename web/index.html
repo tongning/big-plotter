@@ -14,6 +14,11 @@
   <button id="btn-admin" class="ghost" title="Machine control">⚙️</button>
 </header>
 
+<div id="home-warning" class="home-warning" role="alert">
+  <strong>⚠️ Printer is not homed.</strong>
+  Set the pen at the board origin, then use the 📍 button in Machine control before drawing.
+</div>
+
 <div id="admin-panel" class="hidden">
   <h3>Machine control</h3>
   <div class="admin-grid">
@@ -66,10 +71,6 @@
   </div>
   <div class="board-actions">
     <button id="btn-start" class="primary big">✏️ Draw in this spot</button>
-    <div class="demo-strip">
-      <span class="demo-strip-label">…or plot a ready-made drawing here:</span>
-      <div id="demo-cards"></div>
-    </div>
     <button id="btn-clear-board" class="ghost danger">🧹 New paper (clear board)</button>
   </div>
 </section>
@@ -78,10 +79,6 @@
   <div class="draw-top">
     <button id="btn-back" class="ghost">← Back</button>
     <span id="region-label"></span>
-  </div>
-  <div id="demo-banner" class="hidden">
-    <span id="demo-banner-text"></span>
-    <button id="btn-demo-blank" class="ghost">start blank instead</button>
   </div>
   <div class="toolbar" id="toolbar">
     <span id="color-swatches" title="Pen color"><!-- filled in by app.js --></span>
@@ -102,7 +99,7 @@
   <div class="canvas-wrap">
     <canvas id="draw-canvas" width="900" height="900"></canvas>
   </div>
-  <button id="btn-submit" class="primary big">🖨️ Draw it!</button>
+  <button id="btn-submit" class="primary big" disabled title="Set printer home before drawing">🖨️ Draw it!</button>
 </section>
 
 <div id="toast" class="hidden"></div>

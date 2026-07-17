@@ -10,8 +10,7 @@ const src = ['config.js', 'gcode.js']
   .map(f => readFileSync(join(webJs, f), 'utf8'))
   .join('\n');
 const g = new Function(`${src}; return {
-  CONFIG, strokesToGcode, demoToGcode, parseGcode,
-  gcodePolylinesToLocal, gcSimplify, packPolylines, penById,
+  CONFIG, strokesToGcode, gcSimplify, packPolylines, penById,
   boardRecordToLocal,
 };`)();
 
@@ -22,14 +21,15 @@ function check(label, cond, detail = '') {
 }
 
 const { CONFIG } = g;
-// default tile is 100mm: region spans X 400-500, Y 100-200
+// Region spans one active tile from its bottom-left corner.
 const region = { x: 400, y: 100 };
+const tile = CONFIG.tile;
 
 // --- strokesToGcode ---
 // diagonal from canvas top-left (0,0) to bottom-right (tile,tile),
 // plus a horizontal line near the canvas top, plus a single-point dot.
 const strokes = [
-  { points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+  { points: [{ x: 0, y: 0 }, { x: tile, y: tile }] },
   { points: [{ x: 10, y: 5 }, { x: 90, y: 5 }] },
   { points: [{ x: 50, y: 50 }] },
 ];
@@ -51,14 +51,15 @@ check('all coords inside usable area',
   nonPark.every(p => p.x >= CONFIG.margin && p.x <= CONFIG.boardW - CONFIG.margin &&
                      p.y >= CONFIG.margin && p.y <= CONFIG.boardH - CONFIG.margin),
   JSON.stringify(nonPark));
-// canvas (0,0) = tile top-left -> board (400, 200); canvas (100,100) -> (500, 100)
+// canvas (0,0) = tile top-left; canvas (tile,tile) = bottom-right.
 check('y-axis flipped + region offset (start of diagonal)',
-  nonPark[0].x === 400 && nonPark[0].y === 200, JSON.stringify(nonPark[0]));
+  nonPark[0].x === region.x && nonPark[0].y === region.y + tile, JSON.stringify(nonPark[0]));
 check('y-axis flipped + region offset (end of diagonal)',
-  nonPark[1].x === 500 && nonPark[1].y === 100, JSON.stringify(nonPark[1]));
-// horizontal line at canvas y=5 -> board y = 100 + 95 = 195
+  nonPark[1].x === region.x + tile && nonPark[1].y === region.y, JSON.stringify(nonPark[1]));
+// horizontal line at canvas y=5 -> board y = region.y + tile - 5
 check('second stroke at correct height',
-  nonPark[2].y === 195 && nonPark[3].y === 195, JSON.stringify(nonPark.slice(2, 4)));
+  nonPark[2].y === region.y + tile - 5 && nonPark[3].y === region.y + tile - 5,
+  JSON.stringify(nonPark.slice(2, 4)));
 const penDowns = gcode.split('\n').filter(l => l.startsWith(CONFIG.penDownCmd)).length;
 check('one pen-down per stroke incl. dot', penDowns === 3, `got ${penDowns}`);
 check('ends parked', gcode.trimEnd().endsWith('; park'));
@@ -96,33 +97,26 @@ check('color groups in first-appearance order, one switch per color',
     g.penById('red').cmd + '|' + g.penById('blue').cmd,
   JSON.stringify(audit.colorCmds));
 check('pen is up at every color switch', audit.switchesWhileDown === 0);
-// red group = strokes 1 and 3 back to back: both red strokes plot between
-// the red switch and the blue switch (y 10 and 50 -> board 190 and 150).
+// Red group = strokes 1 and 3 back to back before the blue switch.
 const blueSwitchAt = colored.indexOf(g.penById('blue').cmd);
 const redYs = [...colored.slice(0, blueSwitchAt).matchAll(/^G0 X[\d.]+ Y([\d.]+)/gm)]
   .map(m => +m[1]);
-check('same-color strokes are grouped', redYs.join() === '190,150',
+check('same-color strokes are grouped',
+  redYs.join() === [region.y + tile - 10, region.y + tile - 50].join(),
   JSON.stringify(redYs));
 check('grouping preserves every stroke', // 3 stroke travels + park
   (colored.match(/^G0 X/gm) || []).length === 4);
 
-const demoAudit = colorSwitchAudit(
-  g.demoToGcode('G0 X10 Y10\nG1 X20 Y20\n', region, 'd'));
-check('demo selects the default pen, pen up',
-  demoAudit.colorCmds.join() === CONFIG.pens[0].cmd &&
-    demoAudit.switchesWhileDown === 0,
-  JSON.stringify(demoAudit));
-
 // --- board record -> local frame (faint underlay in the draw view) ---
 const rec = {
-  x: 300, y: 200, size: 100,
-  polylines: [[[0, 0], [100, 100]]], // tile top-left -> bottom-right
+  x: 300, y: 200, size: tile,
+  polylines: [[[0, 0], [tile, tile]]], // tile top-left -> bottom-right
   colors: ['red'],
 };
 const same = g.boardRecordToLocal(rec, { x: 300, y: 200 });
 check('record in its own region maps to identity',
   same[0].points[0].x === 0 && same[0].points[0].y === 0 &&
-    same[0].points[1].x === 100 && same[0].points[1].y === 100 &&
+    same[0].points[1].x === tile && same[0].points[1].y === tile &&
     same[0].color === 'red',
   JSON.stringify(same));
 // region 50mm left/below the record: the record sits 50 right and 50 up,
@@ -141,48 +135,6 @@ for (let i = 0; i <= 300; i++) noisy.points.push({ x: i / 2, y: 50 + Math.sin(i)
 const simplified = g.gcSimplify(noisy.points);
 check('simplification collapses near-straight line to few points',
   simplified.length <= 5, `got ${simplified.length}`);
-
-// --- demo parsing + offsetting ---
-const demoText = readFileSync(join(webJs, '..', 'demos', 'star.gcode'), 'utf8');
-const parsed = g.parseGcode(demoText);
-check('star parses to 1 polyline of 11 points',
-  parsed.length === 1 && parsed[0].length === 11,
-  `got ${parsed.length} / ${parsed[0] && parsed[0].length}`);
-check('star coords within authored demo tile',
-  parsed.flat().every(p => p.x >= 0 && p.x <= CONFIG.demoSize &&
-                           p.y >= 0 && p.y <= CONFIG.demoSize));
-
-const demoGcode = g.demoToGcode(demoText, region, 'Star');
-const demoMoves = [];
-for (const line of demoGcode.split('\n')) {
-  const m = line.match(/^G([01]) X(-?[\d.]+) Y(-?[\d.]+)/);
-  if (m) demoMoves.push({ x: +m[2], y: +m[3] });
-}
-// star's first point is (75, 135) on the authored 150 tile; scaled by
-// 100/150 -> (50, 90), offset to the region -> (450, 190) on the board
-check('demo scaled + offset applied',
-  demoMoves[0].x === 450 && demoMoves[0].y === 190,
-  JSON.stringify(demoMoves[0]));
-check('demo moves stay inside the region',
-  demoMoves.slice(0, -1).every(p =>
-    p.x >= region.x && p.x <= region.x + CONFIG.tile &&
-    p.y >= region.y && p.y <= region.y + CONFIG.tile));
-check('demo body pen commands preserved',
-  demoGcode.split(CONFIG.penDownCmd).length - 1 === 1);
-const local = g.gcodePolylinesToLocal(parsed);
-// (75, 135) y-up on the 150 tile -> scaled (50, 90) -> y-down (50, 10)
-check('demo local conversion scales + flips y',
-  local[0][0].x === 50 && local[0][0].y === 10, JSON.stringify(local[0][0]));
-
-// --- all three demos parse and stay in bounds ---
-for (const f of ['star.gcode', 'smiley.gcode', 'opensauce.gcode']) {
-  const t = readFileSync(join(webJs, '..', 'demos', f), 'utf8');
-  const pls = g.parseGcode(t);
-  check(`${f}: parses (${pls.length} polylines) and within authored tile`,
-    pls.length > 0 &&
-    pls.flat().every(p => p.x >= 0 && p.x <= CONFIG.demoSize &&
-                          p.y >= 0 && p.y <= CONFIG.demoSize));
-}
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

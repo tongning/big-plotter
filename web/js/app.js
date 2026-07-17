@@ -10,9 +10,8 @@ const state = {
     y: (CONFIG.boardH - CONFIG.tile) / 2,
   },
   drawings: [], // records already plotted on the board
-  demos: [],    // [{id, name, text, native}] — native = parsed demoSize
-                // polylines; converted to local per use (tile can change)
-  demo: null,   // demo selected for the current draw session, or null
+  printerHomed: false,
+  homing: false,
 };
 
 async function api(method, path, body, type) {
@@ -31,6 +30,33 @@ function toast(msg) {
   el.classList.remove('hidden');
   clearTimeout(toast._t);
   toast._t = setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+function updateHomingUi() {
+  const warning = $('#home-warning');
+  const ready = state.printerHomed && !state.homing;
+  warning.classList.toggle('ready', ready);
+  if (state.homing) {
+    warning.innerHTML = '<strong>⌛ Setting printer home…</strong> Waiting for the printer to confirm its position.';
+  } else {
+    warning.innerHTML = '<strong>⚠️ Printer is not homed.</strong> Set the pen at the board origin, then use the 📍 button in Machine control before drawing.';
+  }
+  const submit = $('#btn-submit');
+  submit.disabled = !ready;
+  submit.title = ready ? '' : 'Set printer home before drawing';
+}
+
+async function refreshPrinterStatus() {
+  try {
+    const status = await api('GET', '/api/status');
+    state.printerHomed = status.homed === true;
+    updateHomingUi();
+    return status;
+  } catch (err) {
+    state.printerHomed = false;
+    updateHomingUi();
+    return null;
+  }
 }
 
 // ---------- board view (region picker) ----------
@@ -244,8 +270,7 @@ function zoomIntoRegion(from) {
   setTimeout(() => ov.remove(), 900);
 }
 
-function enterDraw(demo) {
-  state.demo = demo;
+function enterDraw() {
   // Zoom only when coming from the board view (not e.g. "start blank
   // instead" inside the draw view), and honor reduced-motion.
   const zoomFrom = $('#view-board').classList.contains('hidden') ||
@@ -257,28 +282,14 @@ function enterDraw(demo) {
   // the new drawing (setStrokes below triggers the render).
   surface.background = regionBackground();
   updateRegionLabel();
-  const banner = $('#demo-banner');
-  if (demo) {
-    surface.readonly = true;
-    surface.setStrokes(gcodePolylinesToLocal(demo.native).map(pl => ({
-      points: pl,
-    })));
-    $('#toolbar').classList.add('hidden');
-    banner.classList.remove('hidden');
-    $('#demo-banner-text').textContent =
-      '“' + demo.name + '” is ready — hit Draw it! to plot, or';
-  } else {
-    surface.readonly = false;
-    surface.setStrokes([]);
-    $('#toolbar').classList.remove('hidden');
-    banner.classList.add('hidden');
-  }
+  surface.readonly = false;
+  surface.setStrokes([]);
+  $('#toolbar').classList.remove('hidden');
   if (zoomFrom) zoomIntoRegion(zoomFrom);
 }
 
-$('#btn-start').addEventListener('click', () => enterDraw(null));
+$('#btn-start').addEventListener('click', enterDraw);
 $('#btn-back').addEventListener('click', showBoard);
-$('#btn-demo-blank').addEventListener('click', () => enterDraw(null));
 $('#btn-undo').addEventListener('click', () => surface.undo());
 $('#btn-clear-drawing').addEventListener('click', () => surface.clear());
 
@@ -353,22 +364,19 @@ function watchJob() {
 
 $('#btn-submit').addEventListener('click', async () => {
   const btn = $('#btn-submit');
-  const name = state.demo ? state.demo.name : 'visitor drawing';
-  let gcode, polylines, colors;
-  if (state.demo) {
-    gcode = demoToGcode(state.demo.text, state.region, state.demo.name);
-    polylines = gcodePolylinesToLocal(state.demo.native);
-    // demos plot with the default pen (demoToGcode selects it)
-    colors = polylines.map(() => CONFIG.pens[0].id);
-  } else {
-    if (surface.isEmpty()) {
-      toast('Draw something first! ✏️');
-      return;
-    }
-    gcode = strokesToGcode(surface.strokes, state.region, name);
-    polylines = surface.strokes.map(s => gcSimplify(s.points));
-    colors = surface.strokes.map(s => penById(s.color).id);
+  if (!state.printerHomed || state.homing) {
+    toast('Set printer home before drawing.');
+    return;
   }
+  const name = 'visitor drawing';
+  let gcode, polylines, colors;
+  if (surface.isEmpty()) {
+    toast('Draw something first! ✏️');
+    return;
+  }
+  gcode = strokesToGcode(surface.strokes, state.region, name);
+  polylines = surface.strokes.map(s => gcSimplify(s.points));
+  colors = surface.strokes.map(s => penById(s.color).id);
   // Copy before the network calls so it happens while the click's user
   // activation is still fresh (clipboard access requires it).
   let copied = false;
@@ -404,7 +412,7 @@ $('#btn-submit').addEventListener('click', async () => {
   } catch (err) {
     toast('Failed to send: ' + err.message);
   } finally {
-    btn.disabled = false;
+    updateHomingUi();
     btn.textContent = '🖨️ Draw it!';
   }
 });
@@ -441,8 +449,10 @@ async function sendCommand(gcode, label) {
   try {
     await api('POST', '/api/command', gcode, 'application/octet-stream');
     status.textContent = '✓ ' + label;
+    return true;
   } catch (err) {
     status.textContent = '✗ ' + label + ' — ' + err.message;
+    return false;
   }
 }
 
@@ -460,14 +470,33 @@ for (const btn of document.querySelectorAll('[data-jog]')) {
 // patched Marlin marks G92'd axes as homed, so from this point the firmware
 // clamps moves to the board; M211 S1 re-arms them in case an operator sent
 // M211 S0 (the escape hatch for jogging past a stale zero when re-homing).
-$('#btn-home').addEventListener('click', () =>
-  sendCommand('G92 X0 Y0\nM211 S1\n', 'set home (0,0) + endstops on'));
+$('#btn-home').addEventListener('click', async () => {
+  state.homing = true;
+  updateHomingUi();
+  const sent = await sendCommand('G92 X0 Y0\nM211 S1\n', 'set home (0,0) + endstops on');
+  if (!sent) {
+    state.homing = false;
+    updateHomingUi();
+    return;
+  }
+  for (let i = 0; i < 20; i++) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const status = await refreshPrinterStatus();
+    if (status && status.homed) break;
+  }
+  state.homing = false;
+  await refreshPrinterStatus();
+  if (!state.printerHomed) $('#admin-status').textContent = '✗ printer did not confirm home';
+});
 $('#btn-pen-up').addEventListener('click', () =>
   sendCommand(CONFIG.penUpCmd + '\n', 'pen up'));
 $('#btn-pen-down').addEventListener('click', () =>
   sendCommand(CONFIG.penDownCmd + '\n', 'pen down'));
-$('#btn-motors-off').addEventListener('click', () =>
-  sendCommand('M84\n', 'motors off'));
+$('#btn-motors-off').addEventListener('click', async () => {
+  state.printerHomed = false;
+  updateHomingUi();
+  await sendCommand('M84\n', 'motors off');
+});
 
 // Color switching. The pen MUST be up while the carousel rotates or the
 // mechanism jams, so every switch lifts first and dwells before rotating.
@@ -520,12 +549,8 @@ function tileChanged() {
   renderBoard();
   if ($('#view-draw').classList.contains('hidden')) return;
   updateRegionLabel();
-  if (state.demo) {
-    enterDraw(state.demo); // rescale a previewed demo
-  } else {
-    surface.background = regionBackground();
-    surface.render();
-  }
+  surface.background = regionBackground();
+  surface.render();
 }
 
 $('#btn-settings-save').addEventListener('click', () => {
@@ -580,62 +605,8 @@ gcodeInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') sendCustomGcode();
 });
 
-// ---------- demos ----------
-
-async function loadDemos() {
-  let manifest;
-  try {
-    manifest = await (await fetch('demos/manifest.json')).json();
-  } catch (err) {
-    return; // demos are optional
-  }
-  for (const entry of manifest) {
-    try {
-      const text = await (await fetch('demos/' + entry.file)).text();
-      state.demos.push({
-        id: entry.id,
-        name: entry.name,
-        text,
-        native: parseGcode(text),
-      });
-    } catch (err) {
-      console.warn('demo failed to load:', entry.file, err);
-    }
-  }
-  const holder = $('#demo-cards');
-  for (const demo of state.demos) {
-    const card = document.createElement('button');
-    card.className = 'demo-card';
-    const cv = document.createElement('canvas');
-    cv.width = 96;
-    cv.height = 96;
-    drawPreview(cv, gcodePolylinesToLocal(demo.native));
-    const label = document.createElement('span');
-    label.textContent = demo.name;
-    card.append(cv, label);
-    card.addEventListener('click', () => enterDraw(demo));
-    holder.appendChild(card);
-  }
-}
-
-function drawPreview(canvas, polylines) {
-  const ctx = canvas.getContext('2d');
-  const s = canvas.width / CONFIG.tile;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = CONFIG.pens[0].css; // demos plot with the default pen
-  ctx.lineWidth = 1.2;
-  ctx.lineCap = 'round';
-  for (const pl of polylines) {
-    if (pl.length === 0) continue;
-    ctx.beginPath();
-    ctx.moveTo(pl[0].x * s, pl[0].y * s);
-    for (let i = 1; i < pl.length; i++) ctx.lineTo(pl[i].x * s, pl[i].y * s);
-    ctx.stroke();
-  }
-}
-
 // ---------- init ----------
 
 loadBoard();
-loadDemos();
+refreshPrinterStatus();
+setInterval(refreshPrinterStatus, 3000);

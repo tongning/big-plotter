@@ -10,10 +10,6 @@ const CONFIG = {
   margin: 25,
   // Side length of a user drawing region (admin-configurable at runtime).
   tile: 70,
-  // Demo gcode files are authored on this tile size (see make_demos.py);
-  // they get scaled by tile/demoSize at preview/send time.
-  demoSize: 150,
-
   // Pen lift servo. Adjust angles once the hardware is tuned.
   penUpCmd: 'M280 P0 S140',
   penDownCmd: 'M280 P0 S40',

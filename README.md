@@ -2,8 +2,8 @@
 
 Interactive pen-plotter exhibit for Open Sauce. Visitors pick a square
 spot (100×100mm by default, adjustable in the admin settings) on a
-30in × 20in board, make a drawing in a web app (or choose a ready-made
-demo), and hit **Draw it!** — the drawing is converted to gcode in the
+30in × 20in board, make a drawing in a web app, and hit **Draw it!** —
+the drawing is converted to gcode in the
 browser and streamed to the plotter.
 
 ```
@@ -39,7 +39,7 @@ admin commands in `server/commands.log`. Board state persists in
 `server/board.json`.
 
 Tests for the browser-side gcode pipeline (transforms, bounds clamping,
-simplification, demo parsing/offsetting — runs the real `web/js` sources):
+simplification — runs the real `web/js` sources):
 
 ```sh
 node server/test_gcode.mjs
@@ -118,8 +118,8 @@ is labeled `+5V GND 0.2 0.3 RESET` (square pad = `+5V`).
 First hardware test: open the web app → ⚙️ admin panel → **Pen up**. The
 serial monitor should show `[printer] ok`. Then jog with the arrows, set the
 origin with 📍 (`G92 X0 Y0` + `M211 S1` — the machine has no endstops; this
-also arms the firmware's software endstops, see the Marlin section), and
-plot the star demo. The panel also has **Motors off** (`M84`, so the head
+also arms the firmware's software endstops, see the Marlin section). The
+app will not send a drawing until the printer confirms this step. The panel also has **Motors off** (`M84`, so the head
 can be positioned by hand), color swatches that rotate the pen carousel
 (always lifting the pen first — rotating with the pen down jams the
 mechanism), a collapsible **Settings** form (tile size and the pen
@@ -190,7 +190,7 @@ change in `marlin/config/pins_BTT_SKR_V1_4.h`.
 | `POST`   | `/api/print`   | raw gcode (`application/octet-stream`) | Queue the (single, latest) drawing for the plotter. 409 if a job is active. |
 | `POST`   | `/api/command` | raw gcode (`application/octet-stream`) | Immediate machine command from the admin panel (jog, set-home, pen). 409 if busy. |
 | `DELETE` | `/api/board`   | —              | Clear board state (staff "new paper" button). |
-| `GET`    | `/api/status`  | —              | `{state, line, error, ip, rssi}` — job progress and WiFi info. The app polls this after each submit to surface job failures (a queued job can still die on the machine). Mock always reports idle/no error. |
+| `GET`    | `/api/status`  | —              | `{state, line, error, ip, rssi, homed}` — job progress, printer home state, and WiFi info. The app blocks drawing until `homed` is true. |
 
 Only the current drawing's gcode is ever sent to the printer; board records
 exist purely so the region picker shows what's already on the paper.
@@ -209,15 +209,7 @@ exist purely so the region picker shows what's already on the paper.
   emits pen-up + a `colorSettleMs` dwell *before* rotating; switching with
   the pen down jams the carousel. Visitor strokes carry a color, and gcode
   emission groups strokes by color (first-appearance order) so each pen is
-  selected exactly once per job. Demos plot with the default (first) pen.
+  selected exactly once per job.
 - Conversion (`web/js/gcode.js`): strokes are simplified (min-distance +
   Douglas-Peucker), flipped from canvas y-down to plotter y-up, offset to
   the chosen region, and emitted as `G0` travels / `G1` draws.
-
-## Demo drawings
-
-`web/demos/*.gcode` are authored on a 150mm tile (`CONFIG.demoSize`;
-coords 0–150mm, y-up, `G0`/`G1` + pen commands only). The app parses them
-for previews and rescales/offsets X/Y to the active tile size and region
-at send time. Regenerate with `python3 server/make_demos.py` (edit that
-script to add demos, and list them in `web/demos/manifest.json`).

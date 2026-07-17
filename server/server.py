@@ -10,7 +10,8 @@ ESP32 firmware will expose later:
                         mock: saved to server/prints/<timestamp>.gcode
                         ESP32: streamed to the SKR 1.4 over UART
   DELETE /api/board  -> clear board state (new sheet of paper)
-  GET    /api/status -> {"state","line","error","ip","rssi"} job status
+  GET    /api/status -> {"state","line","error","ip","rssi","homed"}
+                        job status and confirmed home state
                         (mock plots instantly: always idle, never an error)
 
 Run:  python3 server/server.py [port]
@@ -28,7 +29,19 @@ BOARD_FILE = ROOT / "board.json"
 PRINTS_DIR = ROOT / "prints"
 
 _lock = threading.Lock()
-_status = {"line": 0}  # lines of the last received print job
+_status = {"line": 0, "homed": False}  # state visible to the web app
+
+
+def updates_home_state(gcode):
+    """Track the no-switch plotter's G92 home state for the mock API."""
+    lines = [line.split(";", 1)[0].upper() for line in gcode.splitlines()]
+    set_home = any(line.strip().startswith("G92") and "X" in line and "Y" in line
+                   for line in lines)
+    motors_off = any(line.strip().startswith("M84") for line in lines)
+    if motors_off:
+        _status["homed"] = False
+    if set_home:
+        _status["homed"] = True
 
 
 def load_board():
@@ -66,7 +79,8 @@ class Handler(SimpleHTTPRequestHandler):
             # instantly, so state is always idle and error always empty.
             with _lock:
                 self._json({"state": "idle", "line": _status["line"],
-                            "error": "", "ip": "127.0.0.1", "rssi": 0})
+                            "error": "", "ip": "127.0.0.1", "rssi": 0,
+                            "homed": _status["homed"]})
         else:
             super().do_GET()
 
@@ -89,10 +103,15 @@ class Handler(SimpleHTTPRequestHandler):
             gcode = self._body().decode("utf-8", "replace")
             with _lock, open(ROOT / "commands.log", "a") as f:
                 f.write(f"--- {time.strftime('%H:%M:%S')}\n{gcode.rstrip()}\n")
+                updates_home_state(gcode)
             print(f"[command] {' | '.join(gcode.strip().splitlines())}")
             self._json({"ok": True})
         elif self.path == "/api/print":
             gcode = self._body().decode("utf-8", "replace")
+            with _lock:
+                if not _status["homed"]:
+                    self._json({"error": "printer not homed"}, 409)
+                    return
             PRINTS_DIR.mkdir(exist_ok=True)
             name = f"{time.strftime('%Y%m%d-%H%M%S')}-{int(time.time() * 1000) % 1000:03d}.gcode"
             (PRINTS_DIR / name).write_text(gcode)

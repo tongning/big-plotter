@@ -6,9 +6,6 @@
 //   - "local"  : mm within a CONFIG.tile square, origin top-left, y grows
 //                DOWN (matches the drawing canvas).
 //   - "board"  : plotter mm, origin bottom-left, y grows UP.
-//   - Demo gcode files use board-style axes but relative to a
-//     CONFIG.demoSize (150mm) tile; they get scaled to CONFIG.tile and
-//     x/y-offset to the region at preview/send time.
 
 function gcFmt(n) {
   return String(Math.round(n * 100) / 100);
@@ -155,61 +152,6 @@ function strokesToGcode(strokes, region, name) {
     }
   }
   return gcFooter(lines);
-}
-
-// Demo gcode is authored on a CONFIG.demoSize tile. Wrap it in our
-// header/footer, scale every G0/G1 X/Y to the active tile size, and shift
-// by the region offset. Demo files carry no color commands, so they
-// always plot with the default (first) pen.
-function demoToGcode(demoText, region, name) {
-  const k = CONFIG.tile / CONFIG.demoSize;
-  const lines = gcHeader('demo: ' + name, region);
-  gcSelectColor(lines, CONFIG.pens[0].id);
-  for (const raw of demoText.split('\n')) {
-    if (raw.trim() === '') continue;
-    if (/^\s*G0*[01]\b/i.test(raw.split(';')[0])) {
-      lines.push(raw
-        .replace(/X(-?\d*\.?\d+)/i, (_, v) => 'X' + gcFmt(parseFloat(v) * k + region.x))
-        .replace(/Y(-?\d*\.?\d+)/i, (_, v) => 'Y' + gcFmt(parseFloat(v) * k + region.y)));
-    } else {
-      lines.push(raw);
-    }
-  }
-  return gcFooter(lines);
-}
-
-// Parse gcode into polylines in the file's own coordinates (y-up).
-// G0 = travel (breaks the current polyline), G1 = draw.
-function parseGcode(text) {
-  const polylines = [];
-  let cur = null;
-  let x = 0, y = 0;
-  for (const raw of text.split('\n')) {
-    const line = raw.split(';')[0].trim().toUpperCase();
-    const m = line.match(/^G0*([01])\b/);
-    if (!m) continue;
-    const mx = line.match(/X(-?\d*\.?\d+)/);
-    const my = line.match(/Y(-?\d*\.?\d+)/);
-    const nx = mx ? parseFloat(mx[1]) : x;
-    const ny = my ? parseFloat(my[1]) : y;
-    if (m[1] === '1') {
-      if (!cur) { cur = [{ x, y }]; polylines.push(cur); }
-      cur.push({ x: nx, y: ny });
-    } else {
-      cur = null;
-    }
-    x = nx; y = ny;
-  }
-  return polylines;
-}
-
-// Convert parsed demo polylines (demoSize-relative, y-up) to local
-// (CONFIG.tile, y-down) so they can be shown on the canvas / stored in
-// board records.
-function gcodePolylinesToLocal(polylines) {
-  const k = CONFIG.tile / CONFIG.demoSize;
-  return polylines.map(pl =>
-    pl.map(p => ({ x: p.x * k, y: CONFIG.tile - p.y * k })));
 }
 
 // Compact [x, y] pairs (0.1mm precision) for board records.
