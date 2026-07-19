@@ -1,11 +1,15 @@
 'use strict';
 
-// Vector drawing surface. Strokes are polylines in local mm
-// (0..CONFIG.tile, origin top-left, y-down). Never rasterized, so the
-// eraser edits geometry: it removes/splits polyline segments.
+// Vector drawing surface. Retained strokes are polylines in local mm
+// (0..CONFIG.tile, origin top-left, y-down), so the eraser edits geometry:
+// it removes/splits polyline segments. Fill uses only a temporary mask to
+// discover the tapped region, then retains vector hatch strokes.
 
 const ELLIPSE_SEGMENTS = 64;
 const PEN_DISPLAY_MM = 1.2; // cosmetic; the plotter pen width is fixed
+const FILL_RASTER = 600; // temporary coverage mask; output remains vector
+const FILL_SPACING_MM = 3;
+const FILL_BOUNDARY_MM = 1.4;
 
 class DrawingSurface {
   constructor(canvas) {
@@ -16,7 +20,7 @@ class DrawingSurface {
     // drawing. Display only: never erased, submitted, or undone.
     this.background = []; // [{points, color}], color null = pre-color record
     this.undoStack = [];
-    this.tool = 'pen'; // pen | eraser | line | rect | ellipse
+    this.tool = 'pen'; // pen | eraser | line | rect | ellipse | fill
     this.color = CONFIG.pens[0].id;
     this.eraserRadius = 6; // mm
     this.readonly = false;
@@ -88,6 +92,14 @@ class DrawingSurface {
     this.canvas.setPointerCapture(e.pointerId);
     const p = this._toMm(e);
     this.cursor = p;
+    if (this.tool === 'fill') {
+      this._snapshot();
+      const added = this._fillAt(p);
+      if (!added) this.undoStack.pop();
+      this.render();
+      if (added) this._changed();
+      return;
+    }
     this._snapshot();
     this._strokesBefore = JSON.stringify(this.strokes);
     if (this.tool === 'pen') {
@@ -162,6 +174,54 @@ class DrawingSurface {
     this.strokes = out;
   }
 
+  // Flood the tapped open region on a temporary coverage mask, then turn
+  // that region into diagonal vector strokes. Only the generated polylines
+  // are retained, submitted, and plotted.
+  _fillAt(p) {
+    const size = FILL_RASTER;
+    const pxPerMm = size / CONFIG.tile;
+    const raster = document.createElement('canvas');
+    raster.width = raster.height = size;
+    const rasterCtx = raster.getContext('2d', { willReadFrequently: true });
+    rasterCtx.strokeStyle = '#000';
+    rasterCtx.fillStyle = '#000';
+    rasterCtx.lineCap = 'round';
+    rasterCtx.lineJoin = 'round';
+    rasterCtx.lineWidth = Math.max(3, FILL_BOUNDARY_MM * pxPerMm);
+
+    for (const stroke of this.strokes) {
+      const pts = stroke.points;
+      if (!pts.length) continue;
+      if (pts.length === 1) {
+        rasterCtx.beginPath();
+        rasterCtx.arc(pts[0].x * pxPerMm, pts[0].y * pxPerMm,
+          rasterCtx.lineWidth / 2, 0, Math.PI * 2);
+        rasterCtx.fill();
+        continue;
+      }
+      rasterCtx.beginPath();
+      rasterCtx.moveTo(pts[0].x * pxPerMm, pts[0].y * pxPerMm);
+      for (let i = 1; i < pts.length; i++) {
+        rasterCtx.lineTo(pts[i].x * pxPerMm, pts[i].y * pxPerMm);
+      }
+      rasterCtx.stroke();
+    }
+
+    const data = rasterCtx.getImageData(0, 0, size, size).data;
+    const covered = new Uint8Array(size * size);
+    for (let i = 0; i < covered.length; i++) {
+      covered[i] = data[i * 4 + 3] > 32 ? 1 : 0;
+    }
+    const startX = Math.min(size - 1, Math.floor(p.x * pxPerMm));
+    const startY = Math.min(size - 1, Math.floor(p.y * pxPerMm));
+    const inside = fillFloodRegion(covered, size, startX, startY);
+    if (!inside) return false;
+    const hatch = fillHatchStrokes(inside, size, pxPerMm, this.color);
+    if (!hatch.length) return false;
+    this.strokes.push(...hatch);
+    return true;
+  }
+
   render() {
     const ctx = this.ctx, s = this.scale, size = this.canvas.width;
     ctx.clearRect(0, 0, size, size);
@@ -223,6 +283,67 @@ class DrawingSurface {
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * s, pts[i].y * s);
     ctx.stroke();
   }
+}
+
+// 4-connected flood fill from the tapped mask pixel. A null result means
+// the tap landed directly on an existing stroke.
+function fillFloodRegion(covered, size, startX, startY) {
+  const start = startY * size + startX;
+  if (covered[start]) return null;
+  const inside = new Uint8Array(size * size);
+  const stack = [start];
+  inside[start] = 1;
+  while (stack.length) {
+    const index = stack.pop();
+    const x = index % size;
+    const neighbors = [
+      x > 0 ? index - 1 : -1,
+      x < size - 1 ? index + 1 : -1,
+      index - size,
+      index + size,
+    ];
+    for (const neighbor of neighbors) {
+      if (neighbor >= 0 && neighbor < inside.length &&
+          !inside[neighbor] && !covered[neighbor]) {
+        inside[neighbor] = 1;
+        stack.push(neighbor);
+      }
+    }
+  }
+  return inside;
+}
+
+// Walk 45-degree scanlines through the filled mask and emit one two-point
+// vector stroke per contiguous run. Alternate direction to reduce travel.
+function fillHatchStrokes(inside, size, pxPerMm, color) {
+  const step = Math.max(1,
+    Math.round(FILL_SPACING_MM * pxPerMm * Math.SQRT2));
+  const minRun = Math.max(2, Math.round(PEN_DISPLAY_MM * pxPerMm));
+  const strokes = [];
+  for (let offset = -(size - 1); offset < size; offset += step) {
+    const yStart = Math.max(0, -offset);
+    const yEnd = Math.min(size - 1, size - 1 - offset);
+    let runStart = -1;
+    for (let y = yStart; y <= yEnd; y++) {
+      const inRegion = inside[y * size + y + offset];
+      if (inRegion && runStart < 0) runStart = y;
+      if (runStart >= 0 && (!inRegion || y === yEnd)) {
+        const runEnd = inRegion ? y : y - 1;
+        if (runEnd - runStart >= minRun) {
+          const points = [runStart, runEnd].map(runY => ({
+            x: (runY + offset + 0.5) / pxPerMm,
+            y: (runY + 0.5) / pxPerMm,
+          }));
+          strokes.push({
+            points: strokes.length % 2 ? points.reverse() : points,
+            color,
+          });
+        }
+        runStart = -1;
+      }
+    }
+  }
+  return strokes;
 }
 
 function densify(pts, maxLen) {

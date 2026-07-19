@@ -6,12 +6,12 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const webJs = join(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'js');
-const src = ['config.js', 'gcode.js']
+const src = ['config.js', 'gcode.js', 'draw.js']
   .map(f => readFileSync(join(webJs, f), 'utf8'))
   .join('\n');
 const g = new Function(`${src}; return {
   CONFIG, strokesToGcode, gcSimplify, packPolylines, penById,
-  boardRecordToLocal,
+  boardRecordToLocal, fillFloodRegion, fillHatchStrokes,
 };`)();
 
 let failures = 0;
@@ -128,6 +128,33 @@ check('record offset into an overlapping region',
 check('pre-color record maps with null color',
   g.boardRecordToLocal({ ...rec, colors: undefined },
     { x: 300, y: 200 })[0].color === null);
+
+// --- vector hatch fill ---
+const fillSize = 24;
+const fillBoundary = new Uint8Array(fillSize * fillSize);
+for (let n = 4; n <= 19; n++) {
+  fillBoundary[4 * fillSize + n] = 1;
+  fillBoundary[19 * fillSize + n] = 1;
+  fillBoundary[n * fillSize + 4] = 1;
+  fillBoundary[n * fillSize + 19] = 1;
+}
+const fillInside = g.fillFloodRegion(fillBoundary, fillSize, 10, 10);
+check('fill flood stays inside a closed boundary',
+  fillInside[10 * fillSize + 10] === 1 &&
+    fillInside[1 * fillSize + 1] === 0);
+check('fill tap on a boundary is ignored',
+  g.fillFloodRegion(fillBoundary, fillSize, 4, 10) === null);
+const fillStrokes = g.fillHatchStrokes(fillInside, fillSize, 1, 'red');
+check('fill emits colored vector hatch strokes',
+  fillStrokes.length > 0 &&
+    fillStrokes.every(s => s.color === 'red' && s.points.length === 2));
+check('fill hatch remains inside the selected region',
+  fillStrokes.flatMap(s => s.points).every(p =>
+    p.x > 4 && p.x < 20 && p.y > 4 && p.y < 20));
+const fillGcode = g.strokesToGcode(fillStrokes, region, 'fill');
+check('fill hatch passes through the normal G-code pipeline',
+  (fillGcode.match(/^G1 X/gm) || []).length === fillStrokes.length &&
+    colorSwitchAudit(fillGcode).colorCmds.join() === g.penById('red').cmd);
 
 // --- simplification ---
 const noisy = { points: [] };

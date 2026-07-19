@@ -1,3 +1,19 @@
+# Vector hatch fill tool (2026-07-18)
+
+- [x] Add a fill toolbar option that uses the selected pen color.
+- [x] Flood the tapped region and generate diagonal vector hatch strokes.
+- [x] Preserve undo, eraser, board-record, and G-code compatibility.
+- [x] Add headless coverage for fill boundaries and hatch output.
+- [x] Verify JavaScript syntax and the full browser-side test suite (22/22).
+
+## Review
+
+- Fill retains diagonal two-point vector strokes, so existing color,
+  eraser, undo, board-record, and G-code behavior needs no special path.
+- Region discovery uses a temporary 600px coverage mask; no raster data is
+  retained or submitted.
+- Big-plotter mock verified on port 8081 and through its ngrok tunnel.
+
 # Tile size 150→100mm + admin-configurable (2026-07-13)
 
 - [x] config.js: tile 100 default; `demoSize: 150` (authoring size of demo
